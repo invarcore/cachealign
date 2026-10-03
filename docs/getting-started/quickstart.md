@@ -41,16 +41,14 @@ tools = [
             "type": "object",
             "properties": {
                 "customer_id": {"type": "string"},
-                "include_history": {"type": "boolean"}
-            }
-        }
+                "include_history": {"type": "boolean"},
+            },
+        },
     }
 ]
 
 # Run a multi-turn conversation
-conversation = [
-    {"role": "user", "content": "Fetch details for customer CUST-1049."}
-]
+conversation = [{"role": "user", "content": "Fetch details for customer CUST-1049."}]
 
 # Notice: Even if you put a dynamic timestamp in the system prompt,
 # CacheAlign automatically moves it to the dynamic tail so the prefix remains cached!
@@ -92,10 +90,8 @@ tools = [
         "type": "function",
         "function": {
             "name": "calculate_metrics",
-            "parameters": {
-                "values": {"type": "array", "items": {"type": "number"}}
-            }
-        }
+            "parameters": {"values": {"type": "array", "items": {"type": "number"}}},
+        },
     }
 ]
 
@@ -103,7 +99,7 @@ response = client.chat.completions.create(
     model="gpt-4o",
     messages=[
         {"role": "system", "content": "You are a data analysis agent.\nSession: 84920"},
-        {"role": "user", "content": "Compute variance on the dataset."}
+        {"role": "user", "content": "Compute variance on the dataset."},
     ],
     tools=tools,
 )

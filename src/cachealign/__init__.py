@@ -12,11 +12,13 @@ from cachealign.normalizers.partitioner import (
 from cachealign.normalizers.schema import canonicalize_object, canonicalize_tool_schemas
 from cachealign.telemetry.reporter import FinOpsReporter, SessionTelemetry
 from cachealign.wrappers.client import ClientWrapper, wrap
+from cachealign.wrappers.session import CacheAlignSession, optimize, session
 
 __version__ = "0.1.0"
 
 __all__ = [
     "AnthropicAdapter",
+    "CacheAlignSession",
     "ClientWrapper",
     "FinOpsReporter",
     "OpenAIAdapter",
@@ -28,6 +30,8 @@ __all__ = [
     "canonicalize_object",
     "canonicalize_tool_schemas",
     "extract_volatile_elements",
+    "optimize",
     "partition_messages_and_system",
+    "session",
     "wrap",
 ]

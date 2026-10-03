@@ -18,10 +18,7 @@ from cachealign import wrap
 wrapped_client = wrap(anthropic.Anthropic())
 
 # 2. Pass the wrapped client directly to ChatAnthropic
-llm = ChatAnthropic(
-    model_name="claude-3-5-sonnet-20241022",
-    client=wrapped_client
-)
+llm = ChatAnthropic(model_name="claude-3-5-sonnet-20241022", client=wrapped_client)
 
 # 3. Use in your LangGraph ReAct agent
 # All graph cycles and tool turns now benefit from 85%+ cache hit rates!
@@ -47,7 +44,7 @@ researcher = Agent(
     goal="Discover high-growth AI infrastructure tools",
     backstory="You are an expert tech analyst.",
     llm=custom_llm,
-    tools=[]
+    tools=[],
 )
 ```
 
@@ -67,8 +64,8 @@ response = client.chat.completions.create(
     model="gpt-4o",
     messages=[
         {"role": "system", "content": "You are a customer assistant.\nCurrent Time: 2026-10-03"},
-        {"role": "user", "content": "Help me reset my password."}
-    ]
+        {"role": "user", "content": "Help me reset my password."},
+    ],
 )
 ```
 
@@ -89,11 +86,11 @@ history = [{"role": "user", "content": "Solve the user query."}]
 while not task_finished:
     response = client.messages.create(
         model="claude-3-5-sonnet-20241022",
-        system=MASSIVE_SYSTEM_INSTRUCTIONS, # 20,000+ tokens
-        tools=ALL_TOOLS,                   # 30+ tools
+        system=MASSIVE_SYSTEM_INSTRUCTIONS,  # 20,000+ tokens
+        tools=ALL_TOOLS,  # 30+ tools
         messages=history,
     )
-    
+
     # Process tool calls or assistant reply
     # CacheAlign automatically ensures previous turns stay cached!
     if response.stop_reason == "tool_use":
