@@ -14,7 +14,7 @@ from typing import Any
 DEFAULT_VOLATILE_PATTERNS = [
     # Key-value timestamps or current date/time headers on their own line
     re.compile(
-        r"^\s*(?:current\s+time|timestamp|current\s+date(?:\s+and\s+time)?|system\s+time)\s*[:=]\s*(.+)$",
+        r"^\s*(?:current\s+time|timestamp|current\s+date(?:\s+and\s+time)?|system\s+time|date)\s*[:=]\s*(.+)$",
         re.IGNORECASE | re.MULTILINE,
     ),
     # Standalone ISO 8601 timestamps on their own line

@@ -1,0 +1,29 @@
+{
+  "pass_rate_pct": 100.0,
+  "results": [
+    {
+      "id": "financial_audit",
+      "success": true,
+      "invariants_preserved": true,
+      "volatile_removed": true,
+      "volatile_in_tail": true,
+      "xml_isolated": true
+    },
+    {
+      "id": "customer_support",
+      "success": true,
+      "invariants_preserved": true,
+      "volatile_removed": true,
+      "volatile_in_tail": true,
+      "xml_isolated": true
+    },
+    {
+      "id": "instruction_preservation",
+      "success": true,
+      "invariants_preserved": true,
+      "volatile_removed": true,
+      "volatile_in_tail": true,
+      "xml_isolated": true
+    }
+  ]
+}
