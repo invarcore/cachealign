@@ -85,13 +85,47 @@ def run_live_smoke_test(use_pro: bool = False, model_override: str | None = None
     )
 
     # Turn 1: Cold Cache (Initial Cache Write)
-    print("\n[Turn 1] Sending Query: 'Summarize Tier-1 data retention and audit requirements.'")
+    print(f"\n[Turn 1] Sending Query to {model_name}...")
     start_time = time.perf_counter()
-    resp_1 = client.models.generate_content(
-        model=model_name,
-        contents="Summarize Tier-1 data retention and audit requirements in 2 concise sentences.",
-        config={"system_instruction": system_instruction},
-    )
+    try:
+        resp_1 = client.models.generate_content(
+            model=model_name,
+            contents="Summarize Tier-1 data retention and audit requirements in 2 concise sentences.",
+            config={"system_instruction": system_instruction},
+        )
+    except Exception as e:
+        err_msg = str(e)
+        if "RESOURCE_EXHAUSTED" in err_msg or "429" in err_msg or "limit: 0" in err_msg:
+            print("\n" + "!" * 70)
+            print(
+                f"⚠️  Google AI Studio API Quota Note: {model_name} has limit: 0 on your free tier API key."
+            )
+            print(
+                "   (Consumer 'Gemini Advanced' web subscriptions are separate from AI Studio API billing)."
+            )
+            print("   Automatically falling back to 'gemini-2.5-flash' (or gemini-2.0-flash)...")
+            print("!" * 70 + "\n")
+            model_name = "gemini-2.5-flash"
+            start_time = time.perf_counter()
+            try:
+                resp_1 = client.models.generate_content(
+                    model=model_name,
+                    contents="Summarize Tier-1 data retention and audit requirements in 2 concise sentences.",
+                    config={"system_instruction": system_instruction},
+                )
+            except Exception as e2:
+                # Try gemini-2.0-flash if 2.5 flash is also quota-limited
+                print(f"Falling back to gemini-2.0-flash ({e2})...")
+                model_name = "gemini-2.0-flash"
+                start_time = time.perf_counter()
+                resp_1 = client.models.generate_content(
+                    model=model_name,
+                    contents="Summarize Tier-1 data retention and audit requirements in 2 concise sentences.",
+                    config={"system_instruction": system_instruction},
+                )
+        else:
+            raise
+
     t1_duration = (time.perf_counter() - start_time) * 1000
 
     usage_1 = getattr(resp_1, "usage_metadata", None)
