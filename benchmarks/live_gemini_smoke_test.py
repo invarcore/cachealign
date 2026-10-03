@@ -72,17 +72,23 @@ def run_live_smoke_test(use_pro: bool = False, model_override: str | None = None
     elif use_pro:
         model_name = "gemini-3.1-pro-preview"
     else:
-        # Check active models or use latest 2026 default gemini-3.8-flash
+        # Query Google AI Studio API for active models supported on this account
         model_name = "gemini-3.8-flash"
         try:
             available = [
                 getattr(m, "name", "").replace("models/", "") for m in raw_client.models.list()
             ]
-            for candidate in ["gemini-3.8-flash", "gemini-2.0-flash", "gemini-2.5-flash"]:
-                if candidate in available:
-                    model_name = candidate
-                    break
-        except Exception:
+            # Filter for active generation models, strictly excluding deprecated 2.0 and 2.5 series
+            active_flash = [
+                m for m in available if "flash" in m and "2.0" not in m and "2.5" not in m
+            ]
+            if "gemini-3.8-flash" in available:
+                model_name = "gemini-3.8-flash"
+            elif active_flash:
+                model_name = active_flash[0]
+            print(f"Active Google AI Studio Models on this Key: {available[:5]}")
+        except Exception as e:
+            print(f"Model discovery note: {e}")
             model_name = "gemini-3.8-flash"
 
     print("\n" + "=" * 70)
@@ -126,14 +132,8 @@ def run_live_smoke_test(use_pro: bool = False, model_override: str | None = None
                     config={"system_instruction": system_instruction},
                 )
             except Exception as e2:
-                print(f"Falling back to alternative flash model ({e2})...")
-                model_name = "gemini-2.0-flash"
-                start_time = time.perf_counter()
-                resp_1 = client.models.generate_content(
-                    model=model_name,
-                    contents="Summarize Tier-1 data retention and audit requirements in 2 concise sentences.",
-                    config={"system_instruction": system_instruction},
-                )
+                print(f"Could not complete on fallback model ({e2}).")
+                raise
         else:
             raise
 
