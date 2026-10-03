@@ -1,0 +1,29 @@
+services:
+  mock-cache-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    command: ["python", "benchmarks/live_mock_cache_server.py", "--host", "0.0.0.0", "--port", "8080"]
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 1s
+      timeout: 2s
+      retries: 5
+      start_period: 1s
+
+  smoke-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    depends_on:
+      mock-cache-server:
+        condition: service_healthy
+    command: [
+      "python",
+      "benchmarks/live_free_provider_smoke_test.py",
+      "--base-url", "http://mock-cache-server:8080/v1",
+      "--api-key", "mock-test-key",
+      "--model", "gpt-4o"
+    ]

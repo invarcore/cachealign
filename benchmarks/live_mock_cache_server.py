@@ -169,10 +169,10 @@ class CacheSimulationHandler(BaseHTTPRequestHandler):
         return
 
 
-def run_server(port: int = 8080):
-    server = HTTPServer(("127.0.0.1", port), CacheSimulationHandler)
+def run_server(host: str = "0.0.0.0", port: int = 8080):
+    server = HTTPServer((host, port), CacheSimulationHandler)
     print("\n" + "=" * 70)
-    print(f"🚀 CacheAlign Live Prompt Cache Simulation Server Running on http://127.0.0.1:{port}")
+    print(f"🚀 CacheAlign Live Prompt Cache Simulation Server Running on http://{host}:{port}")
     print("=" * 70)
     print("Features:")
     print(" • Emulates real Anthropic (/v1/messages) and OpenAI (/v1/chat/completions) caching")
@@ -190,6 +190,7 @@ def run_server(port: int = 8080):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CacheAlign Live Mock Server")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host interface to bind (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8080, help="Port to bind (default: 8080)")
     args = parser.parse_args()
-    run_server(port=args.port)
+    run_server(host=args.host, port=args.port)

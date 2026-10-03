@@ -192,6 +192,20 @@ response = client.messages.create(...)
 
 ---
 
+---
+
+## 🧪 Hermetic Verification with Docker Compose
+
+Validate CacheAlign's end-to-end prompt caching, TTFT latency reductions, and fail-open guarantees hermetically without external API keys or GPU runtimes:
+
+```bash
+docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from smoke-test
+```
+
+This spins up:
+1. `mock-cache-server`: Lightweight local KV-cache simulation server emulating real Anthropic & OpenAI prefix caching with latency simulation.
+2. `smoke-test`: Isolated client container running multi-turn ReAct loops across the bridge network to verify **~88% TTFT reduction** and **1,000 cached tokens**.
+
 ## 🔒 Security & STRIDE Threat Model
 
 CacheAlign incorporates built-in enterprise defense-in-depth:

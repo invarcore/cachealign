@@ -56,3 +56,13 @@ jobs:
     - name: Build Docker Container
       run: |
         docker build -t cachealign-proxy:ci crates/cachealign-proxy
+  hermetic-smoke-test:
+    name: Hermetic KV-Cache Verification (Docker Compose)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Run Docker Compose KV-Cache Verification
+      run: |
+        docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from smoke-test
+
