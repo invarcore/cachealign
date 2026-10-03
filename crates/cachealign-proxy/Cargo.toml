@@ -1,0 +1,30 @@
+[package]
+name = "cachealign-proxy"
+version = "0.1.0"
+edition = "2021"
+authors = ["Vinay Kumar Ksheera Sagar <sagarv.kumar48@gmail.com>"]
+description = "High-performance sidecar proxy for prompt cache alignment and RFC 8785 schema canonicalization"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/sagarv48/cachealign"
+
+[dependencies]
+axum = { version = "0.7", features = ["macros"] }
+tokio = { version = "1.38", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+tower = { version = "0.4", features = ["util"] }
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+regex = "1.10"
+sha2 = "0.10"
+futures-util = "0.3"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

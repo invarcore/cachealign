@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: enterprise-agent-service
+  labels:
+    app: enterprise-agent
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: enterprise-agent
+  template:
+    metadata:
+      labels:
+        app: enterprise-agent
+    spec:
+      containers:
+        # 1. Primary AI Agent Application (Python, Node.js, Go, or Java)
+        - name: agent-app
+          image: myorg/enterprise-agent:latest
+          env:
+            # Route Anthropic traffic through the localhost CacheAlign sidecar
+            - name: ANTHROPIC_BASE_URL
+              value: "http://127.0.0.1:8080"
+            - name: OPENAI_BASE_URL
+              value: "http://127.0.0.1:8080/v1"
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: llm-api-keys
+                  key: anthropic-api-key
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+            requests:
+              cpu: "500m"
+              memory: 512Mi
+
+        # 2. CacheAlign High-Performance Rust Sidecar Proxy
+        - name: cachealign-sidecar
+          image: ghcr.io/sagarv48/cachealign-proxy:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PORT
+              value: "8080"
+            - name: UPSTREAM_ANTHROPIC
+              value: "https://api.anthropic.com"
+            - name: UPSTREAM_OPENAI
+              value: "https://api.openai.com"
+          ports:
+            - containerPort: 8080
+              name: proxy-http
+          resources:
+            limits:
+              cpu: "500m"
+              memory: 256Mi
+            requests:
+              cpu: "50m"
+              memory: 32Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 5
