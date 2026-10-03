@@ -63,19 +63,31 @@ def run_live_smoke_test(use_pro: bool = False, model_override: str | None = None
 
     from cachealign import CacheAlignConfig, wrap
 
+    # 1. Initialize client
+    raw_client = genai.Client(api_key=api_key)
+
+    # Auto-resolve latest active model from AI Studio catalog
     if model_override:
         model_name = model_override
     elif use_pro:
         model_name = "gemini-3.1-pro-preview"
     else:
-        model_name = "gemini-2.5-flash"
+        # Check active models or use latest 2026 default gemini-3.8-flash
+        model_name = "gemini-3.8-flash"
+        try:
+            available = [
+                getattr(m, "name", "").replace("models/", "") for m in raw_client.models.list()
+            ]
+            for candidate in ["gemini-3.8-flash", "gemini-2.0-flash", "gemini-2.5-flash"]:
+                if candidate in available:
+                    model_name = candidate
+                    break
+        except Exception:
+            model_name = "gemini-3.8-flash"
 
     print("\n" + "=" * 70)
     print(f"🚀 CacheAlign Live Gemini Smoke Test: {model_name}")
     print("=" * 70)
-
-    # 1. Initialize client and wrap with CacheAlign
-    raw_client = genai.Client(api_key=api_key)
     client = wrap(raw_client, config=CacheAlignConfig(fail_open=True, verbose=True))
 
     system_instruction = generate_large_system_policy(min_tokens=1200)
@@ -105,7 +117,7 @@ def run_live_smoke_test(use_pro: bool = False, model_override: str | None = None
             )
             print("   Automatically falling back to 'gemini-2.5-flash' (or gemini-2.0-flash)...")
             print("!" * 70 + "\n")
-            model_name = "gemini-2.5-flash"
+            model_name = "gemini-3.8-flash"
             start_time = time.perf_counter()
             try:
                 resp_1 = client.models.generate_content(
@@ -114,8 +126,7 @@ def run_live_smoke_test(use_pro: bool = False, model_override: str | None = None
                     config={"system_instruction": system_instruction},
                 )
             except Exception as e2:
-                # Try gemini-2.0-flash if 2.5 flash is also quota-limited
-                print(f"Falling back to gemini-2.0-flash ({e2})...")
+                print(f"Falling back to alternative flash model ({e2})...")
                 model_name = "gemini-2.0-flash"
                 start_time = time.perf_counter()
                 resp_1 = client.models.generate_content(
@@ -180,13 +191,13 @@ def run_live_smoke_test(use_pro: bool = False, model_override: str | None = None
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Live Gemini API Smoke Test")
     parser.add_argument(
-        "--pro", action="store_true", help="Use gemini-3.1-pro-preview instead of gemini-2.5-flash"
+        "--pro", action="store_true", help="Use gemini-3.1-pro-preview instead of gemini-3.8-flash"
     )
     parser.add_argument(
         "--model",
         type=str,
         default=None,
-        help="Explicit model identifier (e.g. gemini-3.1-pro-preview, gemini-2.5-flash)",
+        help="Explicit model identifier (e.g. gemini-3.8-flash, gemini-3.1-pro-preview, gemini-2.0-flash)",
     )
     args = parser.parse_args()
 
