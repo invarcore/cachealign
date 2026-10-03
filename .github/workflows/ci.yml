@@ -7,7 +7,8 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  python-test:
+    name: Python (${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -27,8 +28,31 @@ jobs:
     - name: Install dependencies
       run: uv sync --all-extras --dev
 
-    - name: Run Ruff Lint
-      run: uv run ruff check .
+    - name: Run Ruff Lint & Format Check
+      run: |
+        uv run ruff check .
+        uv run ruff format --check .
 
     - name: Run Pytest
-      run: uv run pytest --cov=cachealign --cov-report=term-missing
+      run: uv run pytest --cov=src/cachealign --cov-report=term-missing
+
+    - name: Test Wheel & Sdist Build
+      run: uv build
+
+  rust-proxy:
+    name: Rust Sidecar Proxy
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cargo Check
+      run: |
+        cd crates/cachealign-proxy
+        cargo check --verbose
+
+    - name: Build Docker Container
+      run: |
+        docker build -t cachealign-proxy:ci crates/cachealign-proxy
