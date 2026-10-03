@@ -37,7 +37,7 @@ def generate_large_system_policy(min_tokens: int = 1200) -> str:
     return policy
 
 
-def run_live_smoke_test(use_pro: bool = False):
+def run_live_smoke_test(use_pro: bool = False, model_override: str | None = None):
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         print("\n" + "=" * 70)
@@ -63,7 +63,12 @@ def run_live_smoke_test(use_pro: bool = False):
 
     from cachealign import CacheAlignConfig, wrap
 
-    model_name = "gemini-2.5-pro" if use_pro else "gemini-2.5-flash"
+    if model_override:
+        model_name = model_override
+    elif use_pro:
+        model_name = "gemini-3.1-pro-preview"
+    else:
+        model_name = "gemini-2.5-flash"
 
     print("\n" + "=" * 70)
     print(f"🚀 CacheAlign Live Gemini Smoke Test: {model_name}")
@@ -141,8 +146,14 @@ def run_live_smoke_test(use_pro: bool = False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Live Gemini API Smoke Test")
     parser.add_argument(
-        "--pro", action="store_true", help="Use gemini-2.5-pro instead of gemini-2.5-flash"
+        "--pro", action="store_true", help="Use gemini-3.1-pro-preview instead of gemini-2.5-flash"
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Explicit model identifier (e.g. gemini-3.1-pro-preview, gemini-2.5-flash)",
     )
     args = parser.parse_args()
 
-    run_live_smoke_test(use_pro=args.pro)
+    run_live_smoke_test(use_pro=args.pro, model_override=args.model)
