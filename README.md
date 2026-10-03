@@ -1,6 +1,8 @@
-# CacheAlign
-
 <div align="center">
+
+<img src="assets/logo.png" alt="CacheAlign Logo" width="320" />
+
+# CacheAlign
 
 <h3>Autonomous Prompt Cache Optimizer & Prefix Alignment Middleware for AI Agents</h3>
 
