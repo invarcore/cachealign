@@ -2,7 +2,7 @@
 Streaming SSE wrappers for CacheAlign.
 Intercepts chunk streams in real-time with sub-millisecond pass-through,
 extracting token usage metadata upon stream completion.
-Supports Anthropic MessageStreamManager context managers and OpenAI stream iterators.
+Supports Anthropic MessageStreamManager, OpenAI stream iterators, and Google Gemini streams.
 """
 
 import inspect
@@ -55,6 +55,15 @@ class StreamingUsageCollector:
                     self.cached_tokens = getattr(prompt_details, "cached_tokens", 0)
                 self.has_usage = True
 
+        elif self.provider == "gemini":
+            # Google Gemini chunk usage
+            usage = getattr(chunk, "usage_metadata", None)
+            if usage:
+                self.input_tokens = getattr(usage, "prompt_token_count", 0)
+                self.output_tokens = getattr(usage, "candidates_token_count", 0)
+                self.cached_tokens = getattr(usage, "cached_content_token_count", 0) or 0
+                self.has_usage = True
+
     def build_mock_response(self) -> Any:
         if self.provider == "anthropic":
             return SimpleNamespace(
@@ -63,6 +72,15 @@ class StreamingUsageCollector:
                     output_tokens=self.output_tokens,
                     cache_creation_input_tokens=self.cache_creation_tokens,
                     cache_read_input_tokens=self.cache_read_tokens,
+                )
+            )
+        elif self.provider == "gemini":
+            return SimpleNamespace(
+                usage_metadata=SimpleNamespace(
+                    prompt_token_count=self.input_tokens,
+                    candidates_token_count=self.output_tokens,
+                    total_token_count=self.input_tokens + self.output_tokens,
+                    cached_content_token_count=self.cached_tokens,
                 )
             )
         else:

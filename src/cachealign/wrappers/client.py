@@ -1,16 +1,18 @@
 """
 In-Process SDK Client Wrapper.
 Provides `cachealign.wrap(client)` to transparently optimize synchronous and
-asynchronous LLM client calls across Anthropic and OpenAI.
+asynchronous LLM client calls across Anthropic, OpenAI, and Google Gemini.
 Features enterprise fail-open reliability, multi-tenant cryptographic isolation,
-and full Anthropic messages.stream context manager support.
+and streaming context manager support.
 """
 
 import inspect
 import logging
+from types import SimpleNamespace
 from typing import Any
 
 from cachealign.adapters.anthropic import AnthropicAdapter
+from cachealign.adapters.gemini import GeminiAdapter
 from cachealign.adapters.openai import OpenAIAdapter
 from cachealign.config import CacheAlignConfig
 from cachealign.telemetry.reporter import FinOpsReporter
@@ -169,6 +171,96 @@ class WrappedChatResource:
         return getattr(self._original, name)
 
 
+class WrappedGeminiModelsResource:
+    """Wraps Google Gemini client.models to optimize generate_content calls."""
+
+    def __init__(self, original_models: Any, reporter: FinOpsReporter, config: CacheAlignConfig):
+        self._original = original_models
+        self._reporter = reporter
+        self._config = config
+        self._adapter = GeminiAdapter(config=config)
+
+    def _safe_optimize(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        try:
+            res = self._adapter.optimize_request(kwargs)
+            return res.optimized_kwargs
+        except Exception as e:
+            if self._config.fail_open:
+                logger.warning(
+                    "CacheAlign Gemini optimization encountered an exception; "
+                    "falling open to unoptimized request: %s",
+                    e,
+                    exc_info=True,
+                )
+                return kwargs
+            raise
+
+    def generate_content(self, *args: Any, **kwargs: Any) -> Any:
+        optimized_kwargs = self._safe_optimize(kwargs)
+        model = kwargs.get("model", "gemini-2.5-flash")
+
+        raw_resp = self._original.generate_content(*args, **optimized_kwargs)
+        stats = self._adapter.parse_usage(raw_resp, model)
+        self._reporter.report_turn(stats, model)
+        return raw_resp
+
+    def generate_content_stream(self, *args: Any, **kwargs: Any) -> Any:
+        optimized_kwargs = self._safe_optimize(kwargs)
+        model = kwargs.get("model", "gemini-2.5-flash")
+
+        raw_stream = self._original.generate_content_stream(*args, **optimized_kwargs)
+        return WrappedSyncStream(raw_stream, self._adapter, self._reporter, model, "gemini")
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._original, name)
+
+
+class WrappedAsyncGeminiModelsResource:
+    """Wraps Google Gemini client.aio.models to optimize async generate_content calls."""
+
+    def __init__(
+        self, original_aio_models: Any, reporter: FinOpsReporter, config: CacheAlignConfig
+    ):
+        self._original = original_aio_models
+        self._reporter = reporter
+        self._config = config
+        self._adapter = GeminiAdapter(config=config)
+
+    def _safe_optimize(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        try:
+            res = self._adapter.optimize_request(kwargs)
+            return res.optimized_kwargs
+        except Exception as e:
+            if self._config.fail_open:
+                logger.warning(
+                    "CacheAlign Gemini async optimization encountered an exception; "
+                    "falling open to unoptimized request: %s",
+                    e,
+                    exc_info=True,
+                )
+                return kwargs
+            raise
+
+    async def generate_content(self, *args: Any, **kwargs: Any) -> Any:
+        optimized_kwargs = self._safe_optimize(kwargs)
+        model = kwargs.get("model", "gemini-2.5-flash")
+
+        raw_resp = await self._original.generate_content(*args, **optimized_kwargs)
+        stats = self._adapter.parse_usage(raw_resp, model)
+        self._reporter.report_turn(stats, model)
+        return raw_resp
+
+    async def generate_content_stream(self, *args: Any, **kwargs: Any) -> Any:
+        optimized_kwargs = self._safe_optimize(kwargs)
+        model = kwargs.get("model", "gemini-2.5-flash")
+
+        raw_stream = await self._original.generate_content_stream(*args, **optimized_kwargs)
+        return WrappedAsyncStream(raw_stream, self._adapter, self._reporter, model, "gemini")
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._original, name)
+
+
 class ClientWrapper:
     """Generic wrapper forwarding calls while intercepting target endpoint methods."""
 
@@ -201,6 +293,20 @@ class ClientWrapper:
         if hasattr(client, "chat") and hasattr(client.chat, "completions"):
             self.chat = WrappedChatResource(client.chat, self._reporter, self._config)
 
+        # Detect Google Gemini client (google.genai.Client)
+        if (
+            hasattr(client, "models")
+            and hasattr(client.models, "generate_content")
+            and not hasattr(client, "messages")
+        ):
+            self.models = WrappedGeminiModelsResource(client.models, self._reporter, self._config)
+            if hasattr(client, "aio") and hasattr(client.aio, "models"):
+                self.aio = SimpleNamespace(
+                    models=WrappedAsyncGeminiModelsResource(
+                        client.aio.models, self._reporter, self._config
+                    )
+                )
+
     @property
     def telemetry(self) -> FinOpsReporter:
         return self._reporter
@@ -222,19 +328,21 @@ def wrap(
     fail_open: bool = True,
 ) -> Any:
     """
-    Wraps an Anthropic or OpenAI client instance (Sync or Async) with CacheAlign optimization.
+    Wraps an Anthropic, OpenAI, or Google Gemini client instance (Sync or Async) with CacheAlign.
 
     Usage:
+        # Anthropic
         import anthropic
-        from cachealign import wrap
-
         client = wrap(anthropic.Anthropic())
-        response = client.messages.create(...)
 
-        # Or with streaming context manager:
-        with client.messages.stream(...) as stream:
-            for text in stream.text_stream:
-                print(text, end="")
+        # OpenAI
+        import openai
+        client = wrap(openai.OpenAI())
+
+        # Google Gemini
+        from google import genai
+        client = wrap(genai.Client())
+        response = client.models.generate_content(...)
     """
     reporter = session.reporter if session else None
     return ClientWrapper(
