@@ -2,8 +2,10 @@
 Streaming SSE wrappers for CacheAlign.
 Intercepts chunk streams in real-time with sub-millisecond pass-through,
 extracting token usage metadata upon stream completion.
+Supports Anthropic MessageStreamManager context managers and OpenAI stream iterators.
 """
 
+import inspect
 from collections.abc import AsyncIterator, Iterator
 from types import SimpleNamespace
 from typing import Any
@@ -136,3 +138,64 @@ class WrappedAsyncStream:
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._stream, name)
+
+
+class WrappedMessageStreamManager:
+    """
+    Wraps Anthropic client.messages.stream(...) MessageStreamManager context manager.
+    Preserves .text_stream, .get_final_message(), and automatically extracts token
+    usage telemetry upon exiting the context block.
+    """
+
+    def __init__(
+        self,
+        manager: Any,
+        adapter: ProviderAdapter,
+        reporter: FinOpsReporter,
+        model: str,
+    ):
+        self._manager = manager
+        self._adapter = adapter
+        self._reporter = reporter
+        self._model = model
+        self._stream: Any = None
+
+    def __enter__(self) -> Any:
+        self._stream = self._manager.__enter__()
+        return self._stream
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Any:
+        try:
+            res = self._manager.__exit__(exc_type, exc_val, exc_tb)
+            if self._stream and hasattr(self._stream, "get_final_message"):
+                try:
+                    final_msg = self._stream.get_final_message()
+                    stats = self._adapter.parse_usage(final_msg, self._model)
+                    self._reporter.report_turn(stats, self._model)
+                except Exception:
+                    pass
+            return res
+        except Exception:
+            return self._manager.__exit__(exc_type, exc_val, exc_tb)
+
+    async def __aenter__(self) -> Any:
+        self._stream = await self._manager.__aenter__()
+        return self._stream
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Any:
+        try:
+            res = await self._manager.__aexit__(exc_type, exc_val, exc_tb)
+            if self._stream and hasattr(self._stream, "get_final_message"):
+                try:
+                    fn = self._stream.get_final_message
+                    final_msg = await fn() if inspect.iscoroutinefunction(fn) else fn()
+                    stats = self._adapter.parse_usage(final_msg, self._model)
+                    self._reporter.report_turn(stats, self._model)
+                except Exception:
+                    pass
+            return res
+        except Exception:
+            return await self._manager.__aexit__(exc_type, exc_val, exc_tb)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._manager, name)

@@ -5,6 +5,7 @@ CacheAlign: Autonomous prompt cache optimizer & prefix alignment middleware for 
 from cachealign.adapters.anthropic import AnthropicAdapter
 from cachealign.adapters.base import OptimizationResult, ProviderAdapter, UsageStats
 from cachealign.adapters.openai import OpenAIAdapter
+from cachealign.config import CacheAlignConfig
 from cachealign.normalizers.partitioner import (
     extract_volatile_elements,
     partition_messages_and_system,
@@ -18,6 +19,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     "AnthropicAdapter",
+    "CacheAlignConfig",
     "CacheAlignSession",
     "ClientWrapper",
     "FinOpsReporter",
