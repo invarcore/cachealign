@@ -1,3 +1,6 @@
+# Copyright 2026 Invarcore Organization
+# SPDX-License-Identifier: MIT
+
 """
 Streaming SSE wrappers for CacheAlign.
 Intercepts chunk streams in real-time with sub-millisecond pass-through,

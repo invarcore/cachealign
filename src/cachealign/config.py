@@ -1,3 +1,6 @@
+# Copyright 2026 Invarcore Organization
+# SPDX-License-Identifier: MIT
+
 """
 CacheAlign Configuration Engine.
 Provides centralized settings for token thresholds, breakpoint allocation,

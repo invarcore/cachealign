@@ -1,3 +1,6 @@
+# Copyright 2026 Invarcore Organization
+# SPDX-License-Identifier: MIT
+
 """
 LiteLLM Integration for CacheAlign.
 Provides CacheAlignLiteLLMHandler conforming to LiteLLM CustomLogger interface.

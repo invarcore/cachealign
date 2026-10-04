@@ -1,3 +1,6 @@
+# Copyright 2026 Invarcore Organization
+# SPDX-License-Identifier: MIT
+
 """
 RFC 8785 JSON Canonicalization Scheme (JCS) Normalizer for Tool Schemas.
 Ensures tool definitions and schemas have byte-identical serialized output across

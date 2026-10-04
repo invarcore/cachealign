@@ -1,3 +1,6 @@
+# Copyright 2026 Invarcore Organization
+# SPDX-License-Identifier: MIT
+
 """
 OpenAI ChatCompletions Prompt Caching Adapter.
 Implements RFC 8785 tool canonicalization, tenant cryptographic salt injection,

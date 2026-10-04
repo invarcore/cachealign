@@ -1,3 +1,6 @@
+# Copyright 2026 Invarcore Organization
+# SPDX-License-Identifier: MIT
+
 """
 In-Process SDK Client Wrapper.
 Provides `cachealign.wrap(client)` to transparently optimize synchronous and

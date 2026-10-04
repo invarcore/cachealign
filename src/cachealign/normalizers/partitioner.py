@@ -1,3 +1,6 @@
+# Copyright 2026 Invarcore Organization
+# SPDX-License-Identifier: MIT
+
 """
 Static/Dynamic Prompt Partitioner & Ephemeral Tail Migrator.
 Identifies volatile variables (timestamps, session IDs, turn counters)

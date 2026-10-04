@@ -1,3 +1,6 @@
+# Copyright 2026 Invarcore Organization
+# SPDX-License-Identifier: MIT
+
 from cachealign.normalizers.partitioner import (
     extract_volatile_elements,
     partition_messages_and_system,

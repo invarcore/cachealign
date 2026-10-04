@@ -1,3 +1,6 @@
+# Copyright 2026 Invarcore Organization
+# SPDX-License-Identifier: MIT
+
 """
 Anthropic Claude Prompt Caching Adapter.
 Implements RFC 8785 schema canonicalization, static/dynamic prompt partitioning,

@@ -1,3 +1,6 @@
+# Copyright 2026 Invarcore Organization
+# SPDX-License-Identifier: MIT
+
 """
 CacheAlign: Autonomous prompt cache optimizer & prefix alignment middleware for AI agents.
 """

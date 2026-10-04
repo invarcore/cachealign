@@ -1,3 +1,6 @@
+# Copyright 2026 Invarcore Organization
+# SPDX-License-Identifier: MIT
+
 """
 LangChain and LangGraph Integration for CacheAlign.
 Provides CacheAlignCallbackHandler for automated prompt cache optimization,

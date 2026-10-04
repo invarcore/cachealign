@@ -1,3 +1,6 @@
+# Copyright 2026 Invarcore Organization
+# SPDX-License-Identifier: MIT
+
 """
 Google Gemini Context Caching Adapter for CacheAlign.
 Supports Google GenAI SDK (google-genai) Client and CachedContent API.

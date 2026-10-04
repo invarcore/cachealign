@@ -1,3 +1,6 @@
+# Copyright 2026 Invarcore Organization
+# SPDX-License-Identifier: MIT
+
 """
 CacheAlign FinOps Telemetry & Local Terminal Reporter.
 Tracks session token velocity, cumulative dollars saved, and prints clean terminal metrics.
