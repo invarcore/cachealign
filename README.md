@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Code Style: Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Tests: Passing](https://img.shields.io/badge/tests-38%20passed-brightgreen.svg)](https://github.com/sagarv48/cachealign)
+[![Tests: Passing](https://img.shields.io/badge/tests-38%20passed-brightgreen.svg)](https://github.com/invarcore/cachealign)
 
 **Stop busting your prompt cache.** A 1-line drop-in SDK wrapper and self-hosted Rust sidecar proxy that automatically aligns AI agent prompt prefixes to achieve 85%+ cache hit rates across Anthropic, OpenAI, and Google Gemini.
 
@@ -178,7 +178,7 @@ For polyglot stacks (Node.js, Go, Java, Python) or Kubernetes deployments:
 docker run -p 8080:8080 \
   -e UPSTREAM_ANTHROPIC="https://api.anthropic.com" \
   -e UPSTREAM_OPENAI="https://api.openai.com" \
-  ghcr.io/sagarv48/cachealign-proxy:latest
+  ghcr.io/invarcore/cachealign-proxy:latest
 ```
 
 ### Route Agent Traffic via Localhost

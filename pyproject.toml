@@ -60,10 +60,10 @@ dev = [
 cachealign = "cachealign.cli.main:cli"
 
 [project.urls]
-Homepage = "https://github.com/sagarv48/cachealign"
-Documentation = "https://github.com/sagarv48/cachealign#readme"
-Repository = "https://github.com/sagarv48/cachealign.git"
-Issues = "https://github.com/sagarv48/cachealign/issues"
+Homepage = "https://github.com/invarcore/cachealign"
+Documentation = "https://github.com/invarcore/cachealign#readme"
+Repository = "https://github.com/invarcore/cachealign.git"
+Issues = "https://github.com/invarcore/cachealign/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cachealign"]
