@@ -216,6 +216,17 @@ CacheAlign incorporates built-in enterprise defense-in-depth:
 
 ---
 
+---
+
+## 🏛️ Invarcore Verification Fabric
+
+This engine is part of the **[Invarcore](https://invarcore.com)** enterprise verification fabric. Invarcore develops mathematical invariants, cryptographic policy contracts, and execution runtimes for autonomous AI systems.
+
+* **Official Website & Architecture**: [https://invarcore.com](https://invarcore.com)
+* **Technical Whitepapers & Invariant Specs**: [https://invarcore.com/#whitepapers](https://invarcore.com/#whitepapers)
+* **GitHub Organization**: [https://github.com/invarcore](https://github.com/invarcore)
+* **Security & Vulnerability Disclosure**: [security@invarcore.com](mailto:security@invarcore.com)
+
 ## 📄 License
 
 MIT © [Vinay Kumar Ksheera Sagar](https://github.com/sagarv48)
