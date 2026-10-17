@@ -6,7 +6,7 @@ authors = ["Vinay Kumar Ksheera Sagar <sagarv.kumar48@gmail.com>"]
 description = "High-performance sidecar proxy for prompt cache alignment and RFC 8785 schema canonicalization"
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/sagarv48/cachealign"
+repository = "https://github.com/invarcore/cachealign"
 
 [dependencies]
 axum = { version = "0.7", features = ["macros"] }

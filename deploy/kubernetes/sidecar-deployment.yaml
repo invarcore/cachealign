@@ -39,7 +39,7 @@ spec:
 
         # 2. CacheAlign High-Performance Rust Sidecar Proxy
         - name: cachealign-sidecar
-          image: ghcr.io/sagarv48/cachealign-proxy:latest
+          image: ghcr.io/invarcore/cachealign-proxy:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: PORT
