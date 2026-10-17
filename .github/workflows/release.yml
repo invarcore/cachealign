@@ -1,4 +1,4 @@
-﻿name: Release & Publish
+name: Release & Publish
 
 on:
   push:
@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
-      contents: read
+      contents: write
 
     steps:
     - uses: actions/checkout@v4
@@ -27,8 +27,15 @@ jobs:
     - name: Build distributions
       run: uv build
 
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: dist/*
+        generate_release_notes: true
+
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
+      continue-on-error: true
       with:
         skip-existing: true
 
