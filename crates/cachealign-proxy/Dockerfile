@@ -1,5 +1,5 @@
-# Multi-stage Dockerfile for cachealign-proxy
-FROM rust:1.80-alpine as builder
+﻿# Multi-stage Dockerfile for cachealign-proxy
+FROM rust:alpine AS builder
 
 WORKDIR /usr/src/cachealign-proxy
 RUN apk add --no-cache musl-dev pkgconfig openssl-dev
