@@ -174,19 +174,36 @@ class HardenedKVCacheSimulator:
 
 class HardenedLiveExecutor:
     """
-    Executes live network requests against Anthropic Claude 3.5 Sonnet to measure authentic
-    provider KV-cache retention, cache creation charges, and real wire TTFT.
+    Executes live network requests against Anthropic Claude 3.5 Sonnet directly or via OpenRouter
+    to measure authentic provider KV-cache retention, cache creation charges, and real wire TTFT.
     """
 
-    def __init__(self, api_key: str):
-        try:
-            import anthropic
+    def __init__(self, api_key: str, provider: str = "anthropic"):
+        self.provider = provider.lower()
+        self.api_key = api_key
 
-            self.client = anthropic.Anthropic(api_key=api_key)
-        except ImportError as err:
-            raise ImportError(
-                "Live execution requires the 'anthropic' package. Install with `uv add anthropic`."
-            ) from err
+        if self.provider == "openrouter":
+            import openai
+
+            self.client = openai.OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=api_key,
+                default_headers={
+                    "HTTP-Referer": "https://invarcore.com",
+                    "X-Title": "InvarCore CacheAlign Benchmark",
+                },
+            )
+            self.model = "anthropic/claude-3.5-sonnet"
+        else:
+            try:
+                import anthropic
+
+                self.client = anthropic.Anthropic(api_key=api_key)
+                self.model = "claude-3-5-sonnet-20241022"
+            except ImportError as err:
+                raise ImportError(
+                    "Live execution requires the 'anthropic' package. Install with `uv add anthropic`."
+                ) from err
 
     def reset(self):
         """No-op for live execution (provider handles its own server-side cache)."""
@@ -200,37 +217,82 @@ class HardenedLiveExecutor:
         messages: list[dict[str, Any]],
         has_cache_control: bool,
     ) -> dict[str, Any]:
-        # Format system parameter for Anthropic API
-        if isinstance(system, str) and has_cache_control and arm == "naive_provider":
-            # Developer naively wrapped system prompt with cache_control
-            formatted_system = [
-                {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
-            ]
+        if self.provider == "openrouter":
+            # OpenRouter OpenAI-compatible execution
+            if isinstance(system, list):
+                sys_str = "\n".join(b.get("text", "") for b in system if isinstance(b, dict))
+            else:
+                sys_str = str(system) if system else ""
+
+            formatted_messages = []
+            if sys_str:
+                formatted_messages.append({"role": "system", "content": sys_str})
+            formatted_messages.extend(messages)
+
+            formatted_tools = None
+            if tools:
+                formatted_tools = [
+                    {"type": "function", "function": t} if "function" not in t else t for t in tools
+                ]
+
+            kwargs: dict[str, Any] = {
+                "model": self.model,
+                "max_tokens": OUTPUT_TOKENS_PER_TURN,
+                "messages": formatted_messages,
+            }
+            if formatted_tools:
+                kwargs["tools"] = formatted_tools
+
+            t0 = time.perf_counter()
+            response = self.client.chat.completions.create(**kwargs)
+            ttft_ms = (time.perf_counter() - t0) * 1000.0
+
+            usage = response.usage
+            total_input_tokens = getattr(usage, "prompt_tokens", 0) or 0
+            details = getattr(usage, "prompt_tokens_details", None)
+            cached_tokens = getattr(details, "cached_tokens", 0) if details else 0
+            cache_write_tokens = 0 if cached_tokens > 0 else total_input_tokens
+            uncached_tokens = max(0, total_input_tokens - cached_tokens)
+            output_tokens = (
+                getattr(usage, "completion_tokens", OUTPUT_TOKENS_PER_TURN)
+                or OUTPUT_TOKENS_PER_TURN
+            )
+            response_id = getattr(response, "id", "openrouter_resp")
+            formatted_for_hash = formatted_messages[0]["content"] if formatted_messages else ""
+
         else:
-            formatted_system = system
+            # Direct Anthropic SDK execution
+            if isinstance(system, str) and has_cache_control and arm == "naive_provider":
+                formatted_system = [
+                    {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+                ]
+            else:
+                formatted_system = system
 
-        kwargs: dict[str, Any] = {
-            "model": "claude-3-5-sonnet-20241022",
-            "max_tokens": OUTPUT_TOKENS_PER_TURN,
-            "messages": messages,
-        }
-        if formatted_system:
-            kwargs["system"] = formatted_system
-        if tools:
-            kwargs["tools"] = tools
+            kwargs = {
+                "model": self.model,
+                "max_tokens": OUTPUT_TOKENS_PER_TURN,
+                "messages": messages,
+            }
+            if formatted_system:
+                kwargs["system"] = formatted_system
+            if tools:
+                kwargs["tools"] = tools
 
-        t0 = time.perf_counter()
-        response = self.client.messages.create(**kwargs)
-        ttft_ms = (time.perf_counter() - t0) * 1000.0
+            t0 = time.perf_counter()
+            response = self.client.messages.create(**kwargs)
+            ttft_ms = (time.perf_counter() - t0) * 1000.0
 
-        usage = response.usage
-        cached_tokens = getattr(usage, "cache_read_input_tokens", 0) or 0
-        cache_write_tokens = getattr(usage, "cache_creation_input_tokens", 0) or 0
-        uncached_tokens = getattr(usage, "input_tokens", 0) or 0
-        total_input_tokens = uncached_tokens + cached_tokens + cache_write_tokens
-        output_tokens = (
-            getattr(usage, "output_tokens", OUTPUT_TOKENS_PER_TURN) or OUTPUT_TOKENS_PER_TURN
-        )
+            usage = response.usage
+            cached_tokens = getattr(usage, "cache_read_input_tokens", 0) or 0
+            cache_write_tokens = getattr(usage, "cache_creation_input_tokens", 0) or 0
+            uncached_tokens = getattr(usage, "input_tokens", 0) or 0
+            total_input_tokens = uncached_tokens + cached_tokens + cache_write_tokens
+            output_tokens = (
+                getattr(usage, "output_tokens", OUTPUT_TOKENS_PER_TURN) or OUTPUT_TOKENS_PER_TURN
+            )
+            response_id = response.id
+            formatted_for_hash = formatted_system
 
         cost = (
             (cache_write_tokens * PRICE_CACHE_WRITE)
@@ -240,10 +302,9 @@ class HardenedLiveExecutor:
         )
         is_hit = cached_tokens > 0
         prefix_hash = hashlib.sha256(
-            json.dumps(formatted_system, default=str).encode()
+            json.dumps(formatted_for_hash, default=str).encode()
         ).hexdigest()[:12]
 
-        # Rate limit damping for live multi-turn sequences
         time.sleep(1.0)
 
         return {
@@ -255,7 +316,7 @@ class HardenedLiveExecutor:
             "ttft_ms": round(ttft_ms, 2),
             "is_hit": is_hit,
             "prefix_hash": prefix_hash,
-            "response_id": response.id,
+            "response_id": response_id,
         }
 
 
@@ -412,6 +473,8 @@ def run_benchmark(
     workload_key: str = "all",
     turns: int = 10,
     output_dir: str = "benchmarks/results",
+    live_provider: str | None = None,
+    api_key: str | None = None,
 ) -> dict[str, Any]:
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
@@ -432,13 +495,33 @@ def run_benchmark(
     )
 
     if backend == "live":
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
+        key = api_key
+        prov = live_provider
+
+        if not key:
+            if prov == "openrouter":
+                key = os.getenv("OPENROUTER_API_KEY")
+            elif prov == "anthropic":
+                key = os.getenv("ANTHROPIC_API_KEY")
+            else:
+                if os.getenv("OPENROUTER_API_KEY"):
+                    key = os.getenv("OPENROUTER_API_KEY")
+                    prov = "openrouter"
+                elif os.getenv("ANTHROPIC_API_KEY"):
+                    key = os.getenv("ANTHROPIC_API_KEY")
+                    prov = "anthropic"
+
+        if not key:
             raise ValueError(
-                "Live backend execution requires ANTHROPIC_API_KEY environment variable. "
-                "Set ANTHROPIC_API_KEY in your environment or run with '--backend simulation' (default)."
+                "Live backend execution requires OPENROUTER_API_KEY or ANTHROPIC_API_KEY environment variable. "
+                "Set either variable in your environment, pass --api-key <key>, or run with '--backend simulation' (default)."
             )
-        executor = HardenedLiveExecutor(api_key=api_key)
+
+        if not prov:
+            prov = "openrouter" if ("sk-or-" in (key or "")) else "anthropic"
+
+        console.print(f"[bold magenta]▶ Live Provider Selected: [{prov.upper()}][/bold magenta]")
+        executor = HardenedLiveExecutor(api_key=key, provider=prov)
     else:
         executor = HardenedKVCacheSimulator(min_token_threshold=1024)
 
@@ -713,10 +796,24 @@ if __name__ == "__main__":
         "--output-dir", default="benchmarks/results", help="Directory for output artifacts"
     )
 
+    parser.add_argument(
+        "--live-provider",
+        choices=["anthropic", "openrouter"],
+        default=None,
+        help="Target provider for live execution (auto-detected if omitted)",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        help="Explicit API key for live execution (defaults to env var)",
+    )
+
     args = parser.parse_args()
     run_benchmark(
         backend=args.backend,
         workload_key=args.workload,
         turns=args.turns,
         output_dir=args.output_dir,
+        live_provider=args.live_provider,
+        api_key=args.api_key,
     )
