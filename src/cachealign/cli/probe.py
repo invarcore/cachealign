@@ -56,11 +56,13 @@ class CacheProbeEngine:
         route: str = "direct",
         api_key: str | None = None,
         base_url: str | None = None,
+        live: bool = False,
     ):
         self.provider = provider.lower()
         self.route = route.lower()
         self.api_key = api_key or os.getenv(f"{provider.upper()}_API_KEY")
         self.base_url = base_url
+        self.live = live
         self.config = CacheAlignConfig(min_token_threshold=1024)
 
         if self.provider == "anthropic":
@@ -460,8 +462,10 @@ def execute_probe_cli(
     provider: str = "anthropic",
     route: str = "direct",
     output_file: str | None = None,
+    live: bool = False,
 ) -> int:
     """CLI execution entrypoint for cachealign probe."""
+    mode_str = "LIVE" if live else "HERMETIC SIMULATION"
     console.print(
         "\n[bold cyan]════════════════════════════════════════════════════════════════════════════════[/bold cyan]"
     )
@@ -469,13 +473,13 @@ def execute_probe_cli(
         "[bold white]  InvarCore Cache-Probe: Provider-Side Cache Regression Monitor  [/bold white]"
     )
     console.print(
-        f"[bold cyan]  Provider: [{provider.upper()}]  |  Route: [{route.upper()}]  [/bold cyan]"
+        f"[bold cyan]  Provider: [{provider.upper()}]  |  Route: [{route.upper()}]  |  Mode: [{mode_str}][/bold cyan]"
     )
     console.print(
         "[bold cyan]════════════════════════════════════════════════════════════════════════════════[/bold cyan]\n"
     )
 
-    engine = CacheProbeEngine(provider=provider, route=route)
+    engine = CacheProbeEngine(provider=provider, route=route, live=live)
     report = engine.run_all_probes()
 
     table = Table(

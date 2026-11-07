@@ -25,6 +25,7 @@ import argparse
 import copy
 import hashlib
 import json
+import os
 import random
 import time
 from dataclasses import asdict, dataclass
@@ -343,6 +344,14 @@ def run_benchmark(
         "[bold cyan]════════════════════════════════════════════════════════════════════════════════[/bold cyan]\n"
     )
 
+    if backend == "live":
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "Live backend execution requires ANTHROPIC_API_KEY environment variable. "
+                "Set ANTHROPIC_API_KEY in your environment or run with '--backend simulation' (default)."
+            )
+
     workload_defs = get_workload_definitions()
     selected_workloads = workload_defs.keys() if workload_key == "all" else [workload_key]
 
@@ -396,6 +405,7 @@ def run_benchmark(
 
                 messages.append({"role": "user", "content": user_content})
 
+                turn_messages = messages
                 # Determine payload structures per arm
                 if arm_id == "raw_baseline":
                     # Arm 1: Shuffled tools, volatile header embedded in system, no cache control
@@ -406,6 +416,7 @@ def run_benchmark(
                         else list(w_info["tools"])
                     )
                     has_cache_control = False
+                    turn_messages = messages
 
                 elif arm_id == "naive_provider":
                     # Arm 2: Naive cache_control on system, BUT volatile header at line 1 and uncanonicalized tools
@@ -418,6 +429,7 @@ def run_benchmark(
                     has_cache_control = (
                         True  # Developer enabled prompt caching, but didn't align prefix
                     )
+                    turn_messages = messages
 
                 elif arm_id == "cachealign_direct":
                     # Arm 3a: CacheAlign Direct SDK
@@ -440,6 +452,7 @@ def run_benchmark(
                     sys_content = opt_payload.optimized_kwargs.get("system")
                     tools_payload = opt_payload.optimized_kwargs.get("tools")
                     has_cache_control = True
+                    turn_messages = opt_payload.optimized_kwargs.get("messages", messages)
 
                 elif arm_id == "cachealign_litellm":
                     # Arm 3b: CacheAlign LiteLLM Gateway
@@ -465,13 +478,14 @@ def run_benchmark(
                     )
                     tools_payload = [t["function"] for t in opt_litellm["tools"]]
                     has_cache_control = True
+                    turn_messages = [m for m in opt_litellm["messages"] if m["role"] != "system"]
 
                 # Dispatch to Simulator
                 res = simulator.process_turn(
                     arm=arm_id,
                     system=sys_content,
                     tools=tools_payload,
-                    messages=messages,
+                    messages=turn_messages,
                     has_cache_control=has_cache_control,
                 )
 

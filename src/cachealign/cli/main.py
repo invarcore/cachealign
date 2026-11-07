@@ -119,11 +119,19 @@ def canonicalize_tools_cli(input_file: str, output_file: str | None):
     type=click.Path(),
     help="Output JSON report file path.",
 )
-def probe_command(provider: str, route: str, output_file: str | None):
+@click.option(
+    "--live",
+    is_flag=True,
+    default=False,
+    help="Execute live network roundtrips against provider API (requires provider API key).",
+)
+def probe_command(provider: str, route: str, output_file: str | None, live: bool = False):
     """Probes provider prompt cache semantics across 4 normative regression vectors."""
     from cachealign.cli.probe import execute_probe_cli
 
-    exit_code = execute_probe_cli(provider=provider, route=route, output_file=output_file)
+    exit_code = execute_probe_cli(
+        provider=provider, route=route, output_file=output_file, live=live
+    )
     if exit_code != 0:
         sys.exit(exit_code)
 
