@@ -172,6 +172,93 @@ class HardenedKVCacheSimulator:
         }
 
 
+class HardenedLiveExecutor:
+    """
+    Executes live network requests against Anthropic Claude 3.5 Sonnet to measure authentic
+    provider KV-cache retention, cache creation charges, and real wire TTFT.
+    """
+
+    def __init__(self, api_key: str):
+        try:
+            import anthropic
+
+            self.client = anthropic.Anthropic(api_key=api_key)
+        except ImportError as err:
+            raise ImportError(
+                "Live execution requires the 'anthropic' package. Install with `uv add anthropic`."
+            ) from err
+
+    def reset(self):
+        """No-op for live execution (provider handles its own server-side cache)."""
+        pass
+
+    def process_turn(
+        self,
+        arm: str,
+        system: Any,
+        tools: Any,
+        messages: list[dict[str, Any]],
+        has_cache_control: bool,
+    ) -> dict[str, Any]:
+        # Format system parameter for Anthropic API
+        if isinstance(system, str) and has_cache_control and arm == "naive_provider":
+            # Developer naively wrapped system prompt with cache_control
+            formatted_system = [
+                {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+            ]
+        else:
+            formatted_system = system
+
+        kwargs: dict[str, Any] = {
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": OUTPUT_TOKENS_PER_TURN,
+            "messages": messages,
+        }
+        if formatted_system:
+            kwargs["system"] = formatted_system
+        if tools:
+            kwargs["tools"] = tools
+
+        t0 = time.perf_counter()
+        response = self.client.messages.create(**kwargs)
+        ttft_ms = (time.perf_counter() - t0) * 1000.0
+
+        usage = response.usage
+        cached_tokens = getattr(usage, "cache_read_input_tokens", 0) or 0
+        cache_write_tokens = getattr(usage, "cache_creation_input_tokens", 0) or 0
+        uncached_tokens = getattr(usage, "input_tokens", 0) or 0
+        total_input_tokens = uncached_tokens + cached_tokens + cache_write_tokens
+        output_tokens = (
+            getattr(usage, "output_tokens", OUTPUT_TOKENS_PER_TURN) or OUTPUT_TOKENS_PER_TURN
+        )
+
+        cost = (
+            (cache_write_tokens * PRICE_CACHE_WRITE)
+            + (cached_tokens * PRICE_CACHE_READ)
+            + (uncached_tokens * PRICE_BASE_INPUT)
+            + (output_tokens * PRICE_OUTPUT)
+        )
+        is_hit = cached_tokens > 0
+        prefix_hash = hashlib.sha256(
+            json.dumps(formatted_system, default=str).encode()
+        ).hexdigest()[:12]
+
+        # Rate limit damping for live multi-turn sequences
+        time.sleep(1.0)
+
+        return {
+            "total_input_tokens": total_input_tokens,
+            "cached_tokens": cached_tokens,
+            "cache_write_tokens": cache_write_tokens,
+            "uncached_tokens": uncached_tokens,
+            "cost_usd": cost,
+            "ttft_ms": round(ttft_ms, 2),
+            "is_hit": is_hit,
+            "prefix_hash": prefix_hash,
+            "response_id": response.id,
+        }
+
+
 # ==============================================================================
 # Workload Generators
 # ==============================================================================
@@ -351,6 +438,9 @@ def run_benchmark(
                 "Live backend execution requires ANTHROPIC_API_KEY environment variable. "
                 "Set ANTHROPIC_API_KEY in your environment or run with '--backend simulation' (default)."
             )
+        executor = HardenedLiveExecutor(api_key=api_key)
+    else:
+        executor = HardenedKVCacheSimulator(min_token_threshold=1024)
 
     workload_defs = get_workload_definitions()
     selected_workloads = workload_defs.keys() if workload_key == "all" else [workload_key]
@@ -362,7 +452,6 @@ def run_benchmark(
         ("Arm 3b", "cachealign_litellm"),
     ]
 
-    simulator = HardenedKVCacheSimulator(min_token_threshold=1024)
     anthropic_adapter = AnthropicAdapter(config=CacheAlignConfig(min_token_threshold=1024))
     litellm_handler = CacheAlignLiteLLMHandler(
         config=CacheAlignConfig(min_token_threshold=1024), verbose=False
@@ -383,7 +472,7 @@ def run_benchmark(
         arm_results = {}
 
         for arm_label, arm_id in arms:
-            simulator.reset()
+            executor.reset()
             messages = []
             turn_records: list[TurnMetric] = []
 
@@ -480,8 +569,8 @@ def run_benchmark(
                     has_cache_control = True
                     turn_messages = [m for m in opt_litellm["messages"] if m["role"] != "system"]
 
-                # Dispatch to Simulator
-                res = simulator.process_turn(
+                # Dispatch to Simulator or Live Executor
+                res = executor.process_turn(
                     arm=arm_id,
                     system=sys_content,
                     tools=tools_payload,
