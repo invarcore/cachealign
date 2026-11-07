@@ -97,6 +97,37 @@ def canonicalize_tools_cli(input_file: str, output_file: str | None):
         sys.stdout.write(formatted + "\n")
 
 
+@cli.command("probe")
+@click.option(
+    "-p",
+    "--provider",
+    type=click.Choice(["anthropic", "openai", "gemini"], case_sensitive=False),
+    default="anthropic",
+    help="Target LLM provider to probe.",
+)
+@click.option(
+    "-r",
+    "--route",
+    type=click.Choice(["direct", "bedrock", "vertex", "openrouter"], case_sensitive=False),
+    default="direct",
+    help="Routing architecture to evaluate.",
+)
+@click.option(
+    "-o",
+    "--output",
+    "output_file",
+    type=click.Path(),
+    help="Output JSON report file path.",
+)
+def probe_command(provider: str, route: str, output_file: str | None):
+    """Probes provider prompt cache semantics across 4 normative regression vectors."""
+    from cachealign.cli.probe import execute_probe_cli
+
+    exit_code = execute_probe_cli(provider=provider, route=route, output_file=output_file)
+    if exit_code != 0:
+        sys.exit(exit_code)
+
+
 @cli.command("version")
 def show_version():
     """Displays CacheAlign version and status."""
