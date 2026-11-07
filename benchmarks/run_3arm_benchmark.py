@@ -178,7 +178,7 @@ class HardenedLiveExecutor:
     to measure authentic provider KV-cache retention, cache creation charges, and real wire TTFT.
     """
 
-    def __init__(self, api_key: str, provider: str = "anthropic"):
+    def __init__(self, api_key: str, provider: str = "anthropic", model: str | None = None):
         self.provider = provider.lower()
         self.api_key = api_key
 
@@ -193,13 +193,13 @@ class HardenedLiveExecutor:
                     "X-Title": "InvarCore CacheAlign Benchmark",
                 },
             )
-            self.model = "anthropic/claude-3.5-sonnet"
+            self.model = model or "anthropic/claude-sonnet-4.5"
         else:
             try:
                 import anthropic
 
                 self.client = anthropic.Anthropic(api_key=api_key)
-                self.model = "claude-3-5-sonnet-20241022"
+                self.model = model or "claude-3-5-sonnet-20241022"
             except ImportError as err:
                 raise ImportError(
                     "Live execution requires the 'anthropic' package. Install with `uv add anthropic`."
@@ -259,8 +259,10 @@ class HardenedLiveExecutor:
             )
             response_id = getattr(response, "id", "openrouter_resp")
             formatted_for_hash = formatted_messages[0]["content"] if formatted_messages else ""
+            direct_cost = getattr(usage, "cost", None)
 
         else:
+            direct_cost = None
             # Direct Anthropic SDK execution
             if isinstance(system, str) and has_cache_control and arm == "naive_provider":
                 formatted_system = [
@@ -294,12 +296,15 @@ class HardenedLiveExecutor:
             response_id = response.id
             formatted_for_hash = formatted_system
 
-        cost = (
-            (cache_write_tokens * PRICE_CACHE_WRITE)
-            + (cached_tokens * PRICE_CACHE_READ)
-            + (uncached_tokens * PRICE_BASE_INPUT)
-            + (output_tokens * PRICE_OUTPUT)
-        )
+        if self.provider == "openrouter" and direct_cost is not None and direct_cost > 0:
+            cost = direct_cost
+        else:
+            cost = (
+                (cache_write_tokens * PRICE_CACHE_WRITE)
+                + (cached_tokens * PRICE_CACHE_READ)
+                + (uncached_tokens * PRICE_BASE_INPUT)
+                + (output_tokens * PRICE_OUTPUT)
+            )
         is_hit = cached_tokens > 0
         prefix_hash = hashlib.sha256(
             json.dumps(formatted_for_hash, default=str).encode()
