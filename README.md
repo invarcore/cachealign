@@ -190,6 +190,13 @@ client = anthropic.Anthropic(base_url="http://localhost:8080")
 response = client.messages.create(...)
 ```
 
+### CLI Proxy Wrapper (`cachealign exec`)
+Export `HTTPS_PROXY`, `HTTP_PROXY`, `NODE_USE_ENV_PROXY=1`, and `NODE_EXTRA_CA_CERTS` automatically for Node.js and terminal agent CLIs:
+```bash
+cachealign exec --proxy-url http://127.0.0.1:8080 -- copilot
+```
+> Forward-proxy `HTTP CONNECT` TLS tunneling and `cachealign-proxy ca init` in the Rust sidecar are tracked in [Issue #1](https://github.com/invarcore/cachealign/issues/1).
+
 ---
 
 ---

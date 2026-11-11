@@ -55,6 +55,19 @@ cachealign canonicalize tools.json -o tools.canonical.json
 
 ---
 
+### `cachealign exec [OPTIONS] -- <COMMAND...>`
+Wraps a terminal agent or Node.js CLI with `HTTP_PROXY` / `HTTPS_PROXY`, `NODE_USE_ENV_PROXY=1`, and `NODE_EXTRA_CA_CERTS` (defaulting to `~/.config/cachealign/ca/ca.crt` when present):
+
+```bash
+# Preview resolved environment variables without executing
+cachealign exec --dry-run -- copilot --help
+
+# Route a CLI binary through a local CacheAlign CONNECT proxy
+cachealign exec --proxy-url http://127.0.0.1:8080 --ca-cert ~/.config/cachealign/ca/ca.crt -- copilot
+```
+
+---
+
 ### `cachealign version`
 Displays the installed version of CacheAlign:
 
