@@ -272,11 +272,26 @@ def main(argv: list[str] | None = None) -> None:
         default="full",
         help="Probe sequence execution mode (full or daily-smoke)",
     )
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        help="Explicit API key (defaults to LLM_API_KEY or NVIDIA_NIM_API_KEY)",
+    )
     args = parser.parse_args(argv)
 
-    api_key = os.environ.get("LLM_API_KEY", "")
+    api_key = (
+        args.api_key
+        or os.environ.get("LLM_API_KEY")
+        or os.environ.get("NVIDIA_NIM_API_KEY")
+        or os.environ.get("OPENROUTER_API_KEY")
+        or os.environ.get("OPENAI_API_KEY")
+        or os.environ.get("ANTHROPIC_API_KEY")
+        or ""
+    )
     if not api_key or not api_key.strip():
-        raise SystemExit("Error: set LLM_API_KEY environment variable before running live probes.")
+        raise SystemExit(
+            "Error: set LLM_API_KEY or NVIDIA_NIM_API_KEY environment variable before running live probes."
+        )
 
     obs_list = run_probe_sequence(
         route_name=args.route_name,
@@ -292,9 +307,7 @@ def main(argv: list[str] | None = None) -> None:
     with open(args.output_jsonl, "a", encoding="utf-8") as f:
         for obs in obs_list:
             f.write(
-                json.dumps(
-                    asdict(obs), sort_keys=True, separators=(",", ":"), ensure_ascii=False
-                )
+                json.dumps(asdict(obs), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
                 + "\n"
             )
 

@@ -5,8 +5,11 @@
 Unit and Integration Tests for 3-Arm Benchmark Harness.
 """
 
+import json
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
@@ -115,3 +118,54 @@ def test_run_benchmark_fast_smoke(tmp_path):
     # CacheAlign achieves high CTR on coding loop
     assert arms_by_id["cachealign_direct"]["cached_token_ratio_pct"] > 50.0
     assert arms_by_id["cachealign_litellm"]["cached_token_ratio_pct"] > 50.0
+
+
+def test_verify_probe_invariants_pass_and_fail(tmp_path):
+    from benchmarks.verify_live_eval_invariants import verify_probe_invariants
+
+    # 1. Valid passing log
+    pass_file = tmp_path / "pass.jsonl"
+    with open(pass_file, "w", encoding="utf-8") as f:
+        f.write(
+            json.dumps({"probe_phase": "cold_seed", "prompt_tokens": 1500, "cache_read_tokens": 0})
+            + "\n"
+        )
+        f.write(
+            json.dumps(
+                {"probe_phase": "warm_10s", "prompt_tokens": 1500, "cache_read_tokens": 1200}
+            )
+            + "\n"
+        )
+
+    res = verify_probe_invariants(pass_file, min_ctr=0.70)
+    assert res["warm_ctr"] == 1200 / 1500  # 80%
+
+    # 2. Failing: 0 cached tokens on warm turn
+    fail_zero = tmp_path / "fail_zero.jsonl"
+    with open(fail_zero, "w", encoding="utf-8") as f:
+        f.write(
+            json.dumps({"probe_phase": "cold_seed", "prompt_tokens": 1500, "cache_read_tokens": 0})
+            + "\n"
+        )
+        f.write(
+            json.dumps({"probe_phase": "warm_10s", "prompt_tokens": 1500, "cache_read_tokens": 0})
+            + "\n"
+        )
+
+    with pytest.raises(AssertionError, match="P1_ZERO_WARM_CACHE_ENGAGEMENT"):
+        verify_probe_invariants(fail_zero)
+
+    # 3. Failing: low CTR (< 70%)
+    fail_low = tmp_path / "fail_low.jsonl"
+    with open(fail_low, "w", encoding="utf-8") as f:
+        f.write(
+            json.dumps({"probe_phase": "cold_seed", "prompt_tokens": 1000, "cache_read_tokens": 0})
+            + "\n"
+        )
+        f.write(
+            json.dumps({"probe_phase": "warm_10s", "prompt_tokens": 1000, "cache_read_tokens": 500})
+            + "\n"
+        )
+
+    with pytest.raises(AssertionError, match="below the required threshold"):
+        verify_probe_invariants(fail_low, min_ctr=0.70)
