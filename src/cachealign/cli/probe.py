@@ -438,14 +438,21 @@ class CacheProbeEngine:
             else "Route parity mismatch.",
         )
 
-    def run_all_probes(self) -> ProbeReport:
-        """Executes all 4 normative probe vectors."""
-        probes = [
-            self.probe_threshold(),
-            self.probe_retention_and_latency(),
-            self.probe_accounting_integrity(),
-            self.probe_route_parity(),
-        ]
+    def run_all_probes(self, mode: str = "full") -> ProbeReport:
+        """Executes normative probe vectors according to mode ('full' or 'daily-smoke')."""
+        if mode == "daily-smoke":
+            # Runs only cold_seed + warm_10s (P1_ENGAGEMENT_THRESHOLD + P4_USAGE_FIELD_PARITY)
+            probes = [
+                self.probe_threshold(),
+                self.probe_accounting_integrity(),
+            ]
+        else:
+            probes = [
+                self.probe_threshold(),
+                self.probe_retention_and_latency(),
+                self.probe_accounting_integrity(),
+                self.probe_route_parity(),
+            ]
 
         overall = "PASS" if all(p.status == "PASS" for p in probes) else "FAIL"
 
@@ -463,9 +470,10 @@ def execute_probe_cli(
     route: str = "direct",
     output_file: str | None = None,
     live: bool = False,
+    mode: str = "full",
 ) -> int:
     """CLI execution entrypoint for cachealign probe."""
-    mode_str = "LIVE" if live else "HERMETIC SIMULATION"
+    mode_str = f"{'LIVE' if live else 'HERMETIC SIMULATION'} [{mode.upper()}]"
     console.print(
         "\n[bold cyan]════════════════════════════════════════════════════════════════════════════════[/bold cyan]"
     )
@@ -480,7 +488,7 @@ def execute_probe_cli(
     )
 
     engine = CacheProbeEngine(provider=provider, route=route, live=live)
-    report = engine.run_all_probes()
+    report = engine.run_all_probes(mode=mode)
 
     table = Table(
         title=f"Cache-Probe Verification Report: {provider.capitalize()} ({route.capitalize()} Route)"
@@ -511,5 +519,8 @@ def execute_probe_cli(
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(asdict(report), f, indent=2)
         console.print(f"Report written to [bold]{output_file}[/bold]\n")
+        with open(output_file, "rb") as rf:
+            ledger_sha256 = hashlib.sha256(rf.read()).hexdigest()
+        console.print(f"[LEDGER_ANCHOR] file={output_file} sha256={ledger_sha256}")
 
     return 0 if report.overall_status == "PASS" else 1

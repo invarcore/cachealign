@@ -129,12 +129,25 @@ def canonicalize_tools_cli(input_file: str, output_file: str | None):
     default=False,
     help="Execute live network roundtrips against provider API (requires provider API key).",
 )
-def probe_command(provider: str, route: str, output_file: str | None, live: bool = False):
-    """Probes provider prompt cache semantics across 4 normative regression vectors."""
+@click.option(
+    "-m",
+    "--mode",
+    type=click.Choice(["full", "daily-smoke"], case_sensitive=False),
+    default="full",
+    help="Probe mode: 'full' (all 4 normative vectors) or 'daily-smoke' (P1 threshold + P4 accounting).",
+)
+def probe_command(
+    provider: str,
+    route: str,
+    output_file: str | None,
+    live: bool = False,
+    mode: str = "full",
+):
+    """Probes provider prompt cache semantics across normative regression vectors."""
     from cachealign.cli.probe import execute_probe_cli
 
     exit_code = execute_probe_cli(
-        provider=provider, route=route, output_file=output_file, live=live
+        provider=provider, route=route, output_file=output_file, live=live, mode=mode
     )
     if exit_code != 0:
         sys.exit(exit_code)

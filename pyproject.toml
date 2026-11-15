@@ -58,6 +58,7 @@ dev = [
 
 [project.scripts]
 cachealign = "cachealign.cli.main:cli"
+cache-probe = "cachealign.cache_probe_runner:main"
 
 [project.urls]
 Homepage = "https://invarcore.com"
