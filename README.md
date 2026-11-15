@@ -9,7 +9,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Code Style: Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Tests: Passing](https://img.shields.io/badge/tests-38%20passed-brightgreen.svg)](https://github.com/invarcore/cachealign)
+[![Tests: Passing](https://img.shields.io/badge/tests-94%20passed-brightgreen.svg)](https://github.com/invarcore/cachealign)
+[![Live CI Evaluation](https://github.com/invarcore/cachealign/actions/workflows/live-eval.yml/badge.svg)](https://github.com/invarcore/cachealign/actions/workflows/live-eval.yml)
 
 **Stop busting your prompt cache.** A 1-line drop-in SDK wrapper and self-hosted Rust sidecar proxy that automatically aligns AI agent prompt prefixes to achieve 85%+ cache hit rates across Anthropic, OpenAI, and Google Gemini.
 
@@ -71,6 +72,19 @@ Simulated 10-turn enterprise ReAct agent loop (Claude 3.5 Sonnet token pricing, 
 | **TOTAL** | **$0.2348** | **$0.1052** | **74.7% (Overall)** | **$0.1295 (55.2% Saved)** |
 
 *Run the benchmark locally: `python benchmarks/eval_react_loop.py`*
+
+### Live Production Hardware Benchmark (NVIDIA NIM / Nemotron 3 Ultra 550B)
+
+Empirical validation executed live on NVIDIA NIM GPU inference clusters within GitHub Actions CI ([Run #43703220052](https://github.com/invarcore/cachealign/actions/runs/43703220052)) across 4 arms on the Enterprise Data Agent workload:
+
+| Arm | Architecture / Staging | Input Tokens | Cached Tokens | CTR (%) | Total Cost | Cost Savings vs Raw | Wire TTFT Delta |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Arm 1** | Raw Baseline (Shuffled tools, volatile timestamp at token 0) | 11,576 | 0 | **0.0%** | $0.0856 | — | 6,207 ms |
+| **Arm 2** | Naive Provider (Developer prompt caching, unaligned header) | 11,576 | 0 | **0.0%** | $0.0856 | — | 5,340 ms |
+| **Arm 3a** | **CacheAlign Direct** (`OpenAIAdapter`, canonical tools, tail migration) | 11,614 | 8,768 | **75.5%** | **$0.0187** | **78.15%** | 8,456 ms |
+| **Arm 3b** | **CacheAlign LiteLLM** (`CacheAlignLiteLLMHandler` gateway hook) | 11,614 | 8,768 | **75.5%** | **$0.0187** | **78.15%** | 11,185 ms |
+
+*In isolated 2-turn smoke probes (`cache_probe_runner.py`), wire TTFT latency dropped from **7,550 ms to 1,970 ms (-73.9%)** with **82.2% CTR**. See [observatory/README.md](observatory/README.md) and [observatory/ANCHORS.md](observatory/ANCHORS.md) for cryptographic ledger anchors.*
 
 ---
 
