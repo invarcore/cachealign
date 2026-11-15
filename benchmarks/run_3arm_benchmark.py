@@ -41,6 +41,7 @@ from cachealign.adapters.anthropic import (
     SONNET_CACHE_WRITE_PER_M,
     AnthropicAdapter,
 )
+from cachealign.adapters.openai import OpenAIAdapter
 from cachealign.config import CacheAlignConfig
 from cachealign.integrations.litellm import CacheAlignLiteLLMHandler
 
@@ -174,15 +175,24 @@ class HardenedKVCacheSimulator:
 
 class HardenedLiveExecutor:
     """
-    Executes live network requests against Anthropic Claude 3.5 Sonnet directly or via OpenRouter
-    to measure authentic provider KV-cache retention, cache creation charges, and real wire TTFT.
+    Executes live network requests against Anthropic Claude directly, via OpenRouter,
+    or via NVIDIA NIM to measure authentic provider KV-cache retention, cache creation charges,
+    and real wire TTFT.
     """
 
     def __init__(self, api_key: str, provider: str = "anthropic", model: str | None = None):
         self.provider = provider.lower()
         self.api_key = api_key
 
-        if self.provider == "openrouter":
+        if self.provider in ("nvidia", "nvidia_nim"):
+            import openai
+
+            self.client = openai.OpenAI(
+                base_url="https://integrate.api.nvidia.com/v1",
+                api_key=api_key,
+            )
+            self.model = model or "nvidia/nemotron-3-ultra-550b-a55b"
+        elif self.provider == "openrouter":
             import openai
 
             self.client = openai.OpenAI(
@@ -217,8 +227,8 @@ class HardenedLiveExecutor:
         messages: list[dict[str, Any]],
         has_cache_control: bool,
     ) -> dict[str, Any]:
-        if self.provider == "openrouter":
-            # OpenRouter OpenAI-compatible execution
+        if self.provider in ("openrouter", "nvidia", "nvidia_nim"):
+            # OpenRouter / NVIDIA NIM OpenAI-compatible execution
             if isinstance(system, list):
                 sys_str = "\n".join(b.get("text", "") for b in system if isinstance(b, dict))
             else:
@@ -227,13 +237,34 @@ class HardenedLiveExecutor:
             formatted_messages = []
             if sys_str:
                 formatted_messages.append({"role": "system", "content": sys_str})
-            formatted_messages.extend(messages)
+            for m in messages:
+                m_copy = dict(m)
+                if isinstance(m_copy.get("content"), list):
+                    text_parts = []
+                    for b in m_copy["content"]:
+                        if isinstance(b, dict) and "text" in b:
+                            text_parts.append(b["text"])
+                        elif isinstance(b, str):
+                            text_parts.append(b)
+                    m_copy["content"] = "\n".join(text_parts)
+                formatted_messages.append(m_copy)
 
             formatted_tools = None
             if tools:
-                formatted_tools = [
-                    {"type": "function", "function": t} if "function" not in t else t for t in tools
-                ]
+                formatted_tools = []
+                for t in tools:
+                    if "function" in t:
+                        func = dict(t["function"])
+                        if "input_schema" in func and "parameters" not in func:
+                            func["parameters"] = func.pop("input_schema")
+                        func.pop("cache_control", None)
+                        formatted_tools.append({"type": "function", "function": func})
+                    else:
+                        t_copy = dict(t)
+                        t_copy.pop("cache_control", None)
+                        if "input_schema" in t_copy and "parameters" not in t_copy:
+                            t_copy["parameters"] = t_copy.pop("input_schema")
+                        formatted_tools.append({"type": "function", "function": t_copy})
 
             kwargs: dict[str, Any] = {
                 "model": self.model,
@@ -257,7 +288,7 @@ class HardenedLiveExecutor:
                 getattr(usage, "completion_tokens", OUTPUT_TOKENS_PER_TURN)
                 or OUTPUT_TOKENS_PER_TURN
             )
-            response_id = getattr(response, "id", "openrouter_resp")
+            response_id = getattr(response, "id", "live_resp")
             formatted_for_hash = formatted_messages[0]["content"] if formatted_messages else ""
             direct_cost = getattr(usage, "cost", None)
 
@@ -310,7 +341,7 @@ class HardenedLiveExecutor:
             json.dumps(formatted_for_hash, default=str).encode()
         ).hexdigest()[:12]
 
-        time.sleep(1.0)
+        time.sleep(2.0 if self.provider in ("nvidia", "nvidia_nim") else 1.0)
 
         return {
             "total_input_tokens": total_input_tokens,
@@ -480,6 +511,7 @@ def run_benchmark(
     output_dir: str = "benchmarks/results",
     live_provider: str | None = None,
     api_key: str | None = None,
+    model: str | None = None,
 ) -> dict[str, Any]:
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
@@ -504,29 +536,55 @@ def run_benchmark(
         prov = live_provider
 
         if not key:
-            if prov == "openrouter":
+            if prov in ("nvidia", "nvidia_nim"):
+                key = os.getenv("NVIDIA_NIM_API_KEY") or os.getenv("NVIDIA_API_KEY")
+                if not key:
+                    env_fcc = os.path.expanduser("~/.fcc/.env")
+                    if os.path.exists(env_fcc):
+                        with open(env_fcc, encoding="utf-8") as f:
+                            for line in f:
+                                if line.startswith("NVIDIA_NIM_API_KEY="):
+                                    key = line.strip().split("=", 1)[1].strip("\"'")
+                                    break
+            elif prov == "openrouter":
                 key = os.getenv("OPENROUTER_API_KEY")
             elif prov == "anthropic":
                 key = os.getenv("ANTHROPIC_API_KEY")
             else:
-                if os.getenv("OPENROUTER_API_KEY"):
+                if os.getenv("NVIDIA_NIM_API_KEY") or os.getenv("NVIDIA_API_KEY"):
+                    key = os.getenv("NVIDIA_NIM_API_KEY") or os.getenv("NVIDIA_API_KEY")
+                    prov = "nvidia_nim"
+                elif os.path.exists(os.path.expanduser("~/.fcc/.env")):
+                    env_fcc = os.path.expanduser("~/.fcc/.env")
+                    with open(env_fcc, encoding="utf-8") as f:
+                        for line in f:
+                            if line.startswith("NVIDIA_NIM_API_KEY="):
+                                key = line.strip().split("=", 1)[1].strip("\"'")
+                                prov = "nvidia_nim"
+                                break
+                if not key and os.getenv("OPENROUTER_API_KEY"):
                     key = os.getenv("OPENROUTER_API_KEY")
                     prov = "openrouter"
-                elif os.getenv("ANTHROPIC_API_KEY"):
+                elif not key and os.getenv("ANTHROPIC_API_KEY"):
                     key = os.getenv("ANTHROPIC_API_KEY")
                     prov = "anthropic"
 
         if not key:
             raise ValueError(
-                "Live backend execution requires OPENROUTER_API_KEY or ANTHROPIC_API_KEY environment variable. "
+                "Live backend execution requires NVIDIA_NIM_API_KEY, OPENROUTER_API_KEY, or ANTHROPIC_API_KEY environment variable. "
                 "Set either variable in your environment, pass --api-key <key>, or run with '--backend simulation' (default)."
             )
 
         if not prov:
-            prov = "openrouter" if ("sk-or-" in (key or "")) else "anthropic"
+            if key and key.startswith("nvapi-"):
+                prov = "nvidia_nim"
+            elif key and "sk-or-" in key:
+                prov = "openrouter"
+            else:
+                prov = "anthropic"
 
         console.print(f"[bold magenta]▶ Live Provider Selected: [{prov.upper()}][/bold magenta]")
-        executor = HardenedLiveExecutor(api_key=key, provider=prov)
+        executor = HardenedLiveExecutor(api_key=key, provider=prov, model=model)
     else:
         executor = HardenedKVCacheSimulator(min_token_threshold=1024)
 
@@ -541,6 +599,7 @@ def run_benchmark(
     ]
 
     anthropic_adapter = AnthropicAdapter(config=CacheAlignConfig(min_token_threshold=1024))
+    openai_adapter = OpenAIAdapter(config=CacheAlignConfig(min_token_threshold=1024))
     litellm_handler = CacheAlignLiteLLMHandler(
         config=CacheAlignConfig(min_token_threshold=1024), verbose=False
     )
@@ -617,19 +676,41 @@ def run_benchmark(
                         else list(w_info["tools"])
                     )
 
-                    # Apply CacheAlign Adapter optimization
-                    opt_payload = anthropic_adapter.optimize_request(
-                        {
-                            "model": "claude-3-5-sonnet",
-                            "system": raw_sys,
-                            "tools": raw_tools,
-                            "messages": messages,
-                        }
-                    )
-                    sys_content = opt_payload.optimized_kwargs.get("system")
-                    tools_payload = opt_payload.optimized_kwargs.get("tools")
-                    has_cache_control = True
-                    turn_messages = opt_payload.optimized_kwargs.get("messages", messages)
+                    if backend == "live" and getattr(executor, "provider", None) in (
+                        "nvidia",
+                        "nvidia_nim",
+                    ):
+                        opt_payload = openai_adapter.optimize_request(
+                            {
+                                "model": getattr(
+                                    executor, "model", "nvidia/nemotron-3-ultra-550b-a55b"
+                                ),
+                                "system": raw_sys,
+                                "tools": [{"type": "function", "function": t} for t in raw_tools],
+                                "messages": messages,
+                            }
+                        )
+                        messages_opt = opt_payload.optimized_kwargs.get("messages", [])
+                        sys_content = next(
+                            (m["content"] for m in messages_opt if m.get("role") == "system"), ""
+                        )
+                        tools_payload = opt_payload.optimized_kwargs.get("tools")
+                        has_cache_control = True
+                        turn_messages = [m for m in messages_opt if m.get("role") != "system"]
+                    else:
+                        # Apply CacheAlign Anthropic Adapter optimization
+                        opt_payload = anthropic_adapter.optimize_request(
+                            {
+                                "model": "claude-3-5-sonnet",
+                                "system": raw_sys,
+                                "tools": raw_tools,
+                                "messages": messages,
+                            }
+                        )
+                        sys_content = opt_payload.optimized_kwargs.get("system")
+                        tools_payload = opt_payload.optimized_kwargs.get("tools")
+                        has_cache_control = True
+                        turn_messages = opt_payload.optimized_kwargs.get("messages", messages)
 
                 elif arm_id == "cachealign_litellm":
                     # Arm 3b: CacheAlign LiteLLM Gateway
@@ -641,7 +722,7 @@ def run_benchmark(
                     )
 
                     litellm_data = {
-                        "model": "claude-3-5-sonnet",
+                        "model": getattr(executor, "model", "claude-3-5-sonnet"),
                         "messages": [{"role": "system", "content": raw_sys}, *messages],
                         "tools": [{"function": t} for t in raw_tools],
                     }
@@ -803,9 +884,14 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--live-provider",
-        choices=["anthropic", "openrouter"],
+        choices=["anthropic", "openrouter", "nvidia", "nvidia_nim"],
         default=None,
         help="Target provider for live execution (auto-detected if omitted)",
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Target model name for live execution (e.g. nvidia/nemotron-3-ultra-550b-a55b)",
     )
     parser.add_argument(
         "--api-key",
@@ -821,4 +907,5 @@ if __name__ == "__main__":
         output_dir=args.output_dir,
         live_provider=args.live_provider,
         api_key=args.api_key,
+        model=args.model,
     )

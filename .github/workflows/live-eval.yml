@@ -1,0 +1,96 @@
+name: Live Provider Evaluation
+
+on:
+  workflow_dispatch:
+    inputs:
+      workload:
+        description: 'Benchmark workload to evaluate'
+        required: false
+        default: 'data_agent'
+        type: choice
+        options:
+          - data_agent
+          - rotating_rag
+          - coding_loop
+          - all
+      turns:
+        description: 'Number of turns per workload'
+        required: false
+        default: '2'
+        type: string
+  schedule:
+    - cron: '0 3 * * *'  # Nightly at 03:00 UTC
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/cachealign/**'
+      - 'benchmarks/**'
+      - '.github/workflows/live-eval.yml'
+
+jobs:
+  nvidia-nim-live-eval:
+    name: NVIDIA NIM Live Prefix Cache Verification
+    runs-on: ubuntu-latest
+    env:
+      NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Secret Availability
+        id: check-secret
+        run: |
+          if [ -z "${{ secrets.NVIDIA_NIM_API_KEY }}" ]; then
+            echo "::notice ::NVIDIA_NIM_API_KEY secret is not configured in this repository. Skipping live evaluation."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install uv
+        if: steps.check-secret.outputs.skip == 'false'
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        if: steps.check-secret.outputs.skip == 'false'
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        if: steps.check-secret.outputs.skip == 'false'
+        run: uv sync --all-extras --dev
+
+      - name: Run Live Smoke Probe
+        if: steps.check-secret.outputs.skip == 'false'
+        run: |
+          uv run python -m cachealign.cache_probe_runner \
+            --route-name nvidia-nim-direct \
+            --base-url https://integrate.api.nvidia.com \
+            --api-format openai \
+            --model nvidia/nemotron-3-ultra-550b-a55b \
+            --tokens 1500 \
+            --mode daily-smoke \
+            --output-jsonl benchmarks/results/live_probe_summary.jsonl
+
+      - name: Run Live Multi-Arm Benchmark Smoke
+        if: steps.check-secret.outputs.skip == 'false'
+        run: |
+          WORKLOAD="${{ github.event.inputs.workload || 'data_agent' }}"
+          TURNS="${{ github.event.inputs.turns || '2' }}"
+          uv run python benchmarks/run_3arm_benchmark.py \
+            --backend live \
+            --live-provider nvidia_nim \
+            --workload "$WORKLOAD" \
+            --turns "$TURNS" \
+            --output-dir benchmarks/results
+
+      - name: Upload Evaluation Artifacts
+        if: steps.check-secret.outputs.skip == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nvidia-nim-live-eval-artifacts
+          path: |
+            benchmarks/results/live_probe_summary.jsonl
+            benchmarks/results/3arm_benchmark_results.json
+            benchmarks/results/3arm_benchmark_logs.jsonl
+          if-no-files-found: ignore
