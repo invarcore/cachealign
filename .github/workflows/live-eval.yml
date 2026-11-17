@@ -112,3 +112,39 @@ jobs:
             benchmarks/results/3arm_benchmark_results.json
             benchmarks/results/3arm_benchmark_logs.jsonl
           if-no-files-found: ignore
+
+  observatory-multi-provider-smoke:
+    name: Multi-Provider Cache Observatory Daily Smoke
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run Multi-Provider Smoke Probes
+        run: |
+          uv run python observatory/run_daily_observatory.py --mode daily-smoke --output-jsonl observatory/cache_probe_history.jsonl
+
+      - name: Upload Observatory History
+        uses: actions/upload-artifact@v4
+        with:
+          name: cache-probe-history
+          path: observatory/cache_probe_history.jsonl
+          if-no-files-found: ignore
+
