@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Code Style: Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Tests: Passing](https://img.shields.io/badge/tests-94%20passed-brightgreen.svg)](https://github.com/invarcore/cachealign)
+[![Tests: Passing](https://img.shields.io/badge/tests-101%20passed-brightgreen.svg)](https://github.com/invarcore/cachealign)
 [![Live CI Evaluation](https://github.com/invarcore/cachealign/actions/workflows/live-eval.yml/badge.svg)](https://github.com/invarcore/cachealign/actions/workflows/live-eval.yml)
 
 **Stop busting your prompt cache.** A 1-line drop-in SDK wrapper and self-hosted Rust sidecar proxy that automatically aligns AI agent prompt prefixes to achieve 85%+ cache hit rates across Anthropic, OpenAI, and Google Gemini.
@@ -49,6 +49,8 @@ CacheAlign is a zero-latency optimization layer available in two form factors:
 * **Static/Dynamic Prompt Partitioning**: Detects volatile variables (timestamps, nonces, session counters) and automatically relocates them to the dynamic prompt tail within isolated `<cachealign_ephemeral_context>` XML blocks.
 * **Provider-Native Multi-Breakpoint Injection**: Automatically inserts Anthropic's 4 `cache_control` blocks at optimal boundaries; manages Google Gemini `CachedContent` TTLs.
 * **Enterprise Security & Isolation**: Injects cryptographic salts (`tenant_id`) to prevent cross-tenant **CacheProbe** timing side-channel attacks; enforces **Fail-Open Policy** (`fail_open=True`) so an optimization bug can never crash a production agent.
+* **Zero Synthetic Padding Guardrail**: Enforces strictly zero synthetic padding tokens on closed-tokenizer APIs, eliminating model prompt boundary distortion.
+* **Multi-Provider Smoke Probes**: Automated daily smoke testing across Anthropic, OpenAI, AWS Bedrock, and NVIDIA NIM GPU endpoints (`observatory/run_daily_observatory.py`).
 * **Real-Time FinOps Terminal Reporter**: Shows instant feedback on hit rate %, cached tokens, and actual dollars saved per turn.
 
 ---
