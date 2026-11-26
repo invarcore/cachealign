@@ -75,7 +75,7 @@ Offline cost simulation: 10-turn enterprise ReAct agent loop (Claude Sonnet 4.6 
 
 *Run the offline simulation locally: `python benchmarks/eval_react_loop.py`*
 
-### Historical Single-Run Live Hardware Trace (NVIDIA NIM / Nemotron 3 Ultra 550B — Methodology Caveat)
+### Historical Single-Run Live Hardware Trace (NVIDIA NIM / Nemotron 3 Ultra 550B — Methodology Caveat & Clean Re-Run)
 
 Archived single-run GitHub Actions CI trace on NVIDIA NIM ([Run #43703220052](https://github.com/invarcore/cachealign/actions/runs/43703220052)) across 4 arms on the Enterprise Data Agent workload. *Note on caveats uncovered in audit:* (a) arms ran sequentially without cross-arm prefix isolation, causing Arm 3b Turn 1 to reuse warm prefix blocks cached by Arm 3a; (b) `Cost` used proxy Anthropic `$3.00/$3.75/$0.30` accounting rather than native NIM billing and double-charged uncached cold tokens (`cache_write + base_input`) in the legacy script; and (c) latency measured blocking non-streaming completion time rather than true streaming TTFT (explaining why Arm 3a/3b total response time exceeded Arm 1).
 
@@ -86,7 +86,7 @@ Archived single-run GitHub Actions CI trace on NVIDIA NIM ([Run #43703220052](ht
 | **Arm 3a** | **CacheAlign Direct** (`OpenAIAdapter`, canonical tools, tail migration) | 11,614 | 8,768 | **75.5%** | $0.0187 (archived) | 8,456 ms |
 | **Arm 3b** | **CacheAlign LiteLLM** (reused warm prefix from Arm 3a) | 11,614 | 8,768 | **75.5%** | $0.0187 (archived) | 11,185 ms |
 
-*In isolated 2-turn smoke probes (`cache_probe_runner.py`), warm-turn response latency dropped from **7,550 ms to 1,970 ms (-73.9%)** with **82.2% CTR** (note that historical row 1 of `observatory/cache_probe_history.jsonl` shows pre-warmed `cache_read_tokens: 4384` on `cold_seed` due to an un-salted prior prefix). Live multi-run provider re-validation is pending API credits.*
+*Clean 3-Arm Live NIM Re-Run (`benchmarks/results/3arm_benchmark_results.json`, 3 turns/arm, salted per-arm prefixes, fixed `$0.0` non-Anthropic proxy cost & true streaming TTFT):* On `data_agent`, Raw (`17,472` tokens) and Naive (`17,469` tokens) measured **`0.0%` CTR**, whereas CacheAlign Direct (`8,768 / 17,535` cached) achieved **`50.0%` CTR** (`9,280.3 ms` p50 TTFT) and CacheAlign LiteLLM (`8,768 / 17,541` cached) achieved **`49.99%` CTR** (`6,815.2 ms` p50 TTFT); smaller `rotating_rag` (`~7.3K` total tokens across 3 turns) and `coding_loop` (`~8.6K` total tokens) remained at **`0.0%` CTR** below NIM's ~4K prefix-caching threshold. *(Isolated 2-turn smoke probe history in `observatory/cache_probe_history.jsonl` also showed `7,550 ms -> 1,970 ms` response time and `82.2%` CTR; note historical row 1 showed pre-warmed `cache_read_tokens: 4384` on `cold_seed` due to an un-salted prior prefix.)*
 
 ### Offline Trace-Driven KV-Cache Simulation Matrix (N=30 Deterministic Replay Iterations)
 
