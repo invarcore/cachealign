@@ -12,7 +12,7 @@
 [![Status](https://img.shields.io/badge/Status-Pre--release%20%2F%20Source%20Install-orange.svg)](https://github.com/invarcore/cachealign)
 [![Live CI Evaluation](https://github.com/invarcore/cachealign/actions/workflows/live-eval.yml/badge.svg)](https://github.com/invarcore/cachealign/actions/workflows/live-eval.yml)
 
-**Stop busting your prompt cache.** A 1-line drop-in SDK wrapper and self-hosted Rust sidecar proxy that automatically aligns AI agent prompt prefixes to achieve 85%+ cache hit rates across Anthropic, OpenAI, and Google Gemini.
+**Stop busting your prompt cache.** A 1-line drop-in SDK wrapper and self-hosted Rust sidecar proxy that deterministically stabilizes AI agent prompt prefixes across Anthropic, OpenAI, and Google Gemini (*see simulation and live smoke caveats below*).
 
 [Quickstart](#-quickstart-python-sdk) • [Benchmarks](#-empirical-benchmarks) • [Architecture](#-architecture) • [Framework Integrations](#-framework-integrations) • [Rust Sidecar](#-rust-sidecar-proxy)
 
@@ -22,8 +22,8 @@
 
 ## 💥 The Problem: The Prompt Cache-Busting Epidemic
 
-Cloud LLM providers offer **75% to 90% discounts** and up to **50% faster Time-to-First-Token (TTFT)** on prompt-cached tokens:
-- **Anthropic Claude**: 90% discount on prompt-cached tokens ($0.30/1M cached vs $3.00/1M base on Claude 3.5 Haiku / Claude 3.7 Sonnet).
+Cloud LLM providers offer **75% to 90% discounts** (up to 95% on Sonnet 5.5 / Haiku 5.5) on prompt-cached prefix tokens:
+- **Anthropic Claude**: 90% discount on cached reads on Claude Sonnet 4.6 (`$0.30/1M` cached vs `$3.00/1M` base input; `$3.75/1M` 5-min write); current Sonnet 5.5 bills `$2.00/1M` base input (`$0.10/1M` cached) and Haiku 5.5 bills `$0.10/1M` base input ($\le 100\text{K}$).
 - **OpenAI GPT-4o**: 50% discount on cached input ($1.25/1M vs $2.50/1M).
 - **Google Gemini**: 75% to 90% discount on cached context reads.
 
@@ -34,7 +34,7 @@ In real-world multi-turn agent loops (LangGraph, CrewAI, AutoGen, custom ReAct),
 2. **JSON Schema Non-Determinism**: Python dictionary serialization produces non-deterministic key orders across worker nodes, causing prefix hash mismatches.
 3. **Provider-Specific Breakpoint Friction**: Anthropic requires explicit `cache_control: {"type": "ephemeral"}` blocks with 1,024-token minimums; Gemini requires managing `CachedContent` TTLs; OpenAI requires strict 1,024-token boundary padding.
 
-**Result**: Production agents run with **$<25\%$ cache hit rates**, burning 4x to 5x more money than necessary.
+**Illustration**: Without prefix alignment, single-character header mutations invalidate downstream KV cache blocks on every turn, multiplying uncached prefill spend.
 
 ---
 
@@ -57,38 +57,38 @@ CacheAlign is a zero-latency optimization layer available in two form factors:
 
 ## 📊 Empirical Benchmarks
 
-Offline hardware simulation: 10-turn enterprise ReAct agent loop (Anthropic prompt-caching discount ratios, 3,500-token system prompt, 15 tool definitions):
+Offline cost simulation: 10-turn enterprise ReAct agent loop (Claude Sonnet 4.6 pricing ratios; 3,500-char system instructions + 15 tool definitions tokenized via `estimate_tokens`):
 
 | Turn | Baseline Cost | CacheAlign Cost | Cache Hit Rate | Dollars Saved |
 | :---: | :---: | :---: | :---: | :---: |
-| **Turn 1** | $0.0215 | $0.0256 (Cache Write) | 0.0% | $0.0000 |
-| **Turn 2** | $0.0219 | $0.0070 | **94.8%** | **$0.0149** |
-| **Turn 3** | $0.0224 | $0.0075 | **92.4%** | **$0.0149** |
-| **Turn 4** | $0.0228 | $0.0079 | **90.2%** | **$0.0149** |
-| **Turn 5** | $0.0233 | $0.0084 | **88.0%** | **$0.0149** |
-| **Turn 6** | $0.0237 | $0.0089 | **85.9%** | **$0.0149** |
-| **Turn 7** | $0.0242 | $0.0093 | **84.0%** | **$0.0149** |
-| **Turn 8** | $0.0246 | $0.0097 | **82.1%** | **$0.0149** |
-| **Turn 9** | $0.0250 | $0.0102 | **80.3%** | **$0.0149** |
-| **Turn 10** | $0.0255 | $0.0106 | **78.6%** | **$0.0149** |
-| **TOTAL** | **$0.2348** | **$0.1052** | **74.7% (Overall)** | **$0.1295 (55.2% Saved)** |
+| **Turn 1** | $0.0113 | $0.0132 (Cache Write) | 0.0% | $0.0000 |
+| **Turn 2** | $0.0115 | $0.0056 | **94.7%** | **$0.0059** |
+| **Turn 3** | $0.0116 | $0.0057 | **92.8%** | **$0.0059** |
+| **Turn 4** | $0.0118 | $0.0059 | **91.0%** | **$0.0059** |
+| **Turn 5** | $0.0119 | $0.0060 | **89.3%** | **$0.0059** |
+| **Turn 6** | $0.0121 | $0.0061 | **87.6%** | **$0.0059** |
+| **Turn 7** | $0.0122 | $0.0063 | **86.0%** | **$0.0059** |
+| **Turn 8** | $0.0124 | $0.0064 | **84.4%** | **$0.0059** |
+| **Turn 9** | $0.0125 | $0.0066 | **82.9%** | **$0.0059** |
+| **Turn 10** | $0.0126 | $0.0067 | **81.5%** | **$0.0059** |
+| **TOTAL** | **$0.1199** | **$0.0685** | **71.3% (Overall)** | **$0.0514 (42.9% Saved)** |
 
-*Run the benchmark locally: `python benchmarks/eval_react_loop.py`*
+*Run the offline simulation locally: `python benchmarks/eval_react_loop.py`*
 
-### Live Production Hardware Benchmark (NVIDIA NIM / Nemotron 3 Ultra 550B)
+### Historical Single-Run Live Hardware Trace (NVIDIA NIM / Nemotron 3 Ultra 550B — Methodology Caveat)
 
-Empirical validation executed live on NVIDIA NIM GPU inference clusters within GitHub Actions CI ([Run #43703220052](https://github.com/invarcore/cachealign/actions/runs/43703220052)) across 4 arms on the Enterprise Data Agent workload:
+Archived single-run GitHub Actions CI trace on NVIDIA NIM ([Run #43703220052](https://github.com/invarcore/cachealign/actions/runs/43703220052)) across 4 arms on the Enterprise Data Agent workload. *Note on caveats uncovered in audit:* (a) arms ran sequentially without cross-arm prefix isolation, causing Arm 3b Turn 1 to reuse warm prefix blocks cached by Arm 3a; (b) `Cost` used proxy Anthropic `$3.00/$3.75/$0.30` accounting rather than native NIM billing and double-charged uncached cold tokens (`cache_write + base_input`) in the legacy script; and (c) latency measured blocking non-streaming completion time rather than true streaming TTFT (explaining why Arm 3a/3b total response time exceeded Arm 1).
 
-| Arm | Architecture / Staging | Input Tokens | Cached Tokens | CTR (%) | Total Cost | Cost Savings vs Raw | Wire TTFT Delta |
-| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Arm 1** | Raw Baseline (Shuffled tools, volatile timestamp at token 0) | 11,576 | 0 | **0.0%** | $0.0856 | — | 6,207 ms |
-| **Arm 2** | Naive Provider (Developer prompt caching, unaligned header) | 11,576 | 0 | **0.0%** | $0.0856 | — | 5,340 ms |
-| **Arm 3a** | **CacheAlign Direct** (`OpenAIAdapter`, canonical tools, tail migration) | 11,614 | 8,768 | **75.5%** | **$0.0187** | **78.15%** | 8,456 ms |
-| **Arm 3b** | **CacheAlign LiteLLM** (`CacheAlignLiteLLMHandler` gateway hook) | 11,614 | 8,768 | **75.5%** | **$0.0187** | **78.15%** | 11,185 ms |
+| Arm | Architecture / Staging | Input Tokens | Cached Tokens | CTR (%) | Proxy Cost (Legacy Bug) | Non-Streaming Duration |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| **Arm 1** | Raw Baseline (Shuffled tools, volatile timestamp at token 0) | 11,576 | 0 | **0.0%** | $0.0856 (archived bug) | 6,207 ms |
+| **Arm 2** | Naive Provider (Developer prompt caching, unaligned header) | 11,576 | 0 | **0.0%** | $0.0856 (archived bug) | 5,340 ms |
+| **Arm 3a** | **CacheAlign Direct** (`OpenAIAdapter`, canonical tools, tail migration) | 11,614 | 8,768 | **75.5%** | $0.0187 (archived) | 8,456 ms |
+| **Arm 3b** | **CacheAlign LiteLLM** (reused warm prefix from Arm 3a) | 11,614 | 8,768 | **75.5%** | $0.0187 (archived) | 11,185 ms |
 
-*In isolated 2-turn smoke probes (`cache_probe_runner.py`), wire TTFT latency dropped from **7,550 ms to 1,970 ms (-73.9%)** with **82.2% CTR**. See [observatory/README.md](observatory/README.md) and [observatory/ANCHORS.md](observatory/ANCHORS.md) for cryptographic ledger anchors.*
+*In isolated 2-turn smoke probes (`cache_probe_runner.py`), warm-turn response latency dropped from **7,550 ms to 1,970 ms (-73.9%)** with **82.2% CTR** (note that historical row 1 of `observatory/cache_probe_history.jsonl` shows pre-warmed `cache_read_tokens: 4384` on `cold_seed` due to an un-salted prior prefix). Live multi-run provider re-validation is pending API credits.*
 
-### Trace-Driven KV-Cache Hardware Simulation Matrix (N=30 Replay Iterations, Deterministic Token Accounting)
+### Offline Trace-Driven KV-Cache Simulation Matrix (N=30 Deterministic Replay Iterations)
 
 Statistically evaluated across $N=30$ deterministic trace replay iterations per provider/workload arm with Student's $t$ confidence bounds ($\nu=29, t_{0.025, 29} = 2.045$):
 
@@ -107,12 +107,10 @@ Statistically evaluated across $N=30$ deterministic trace replay iterations per 
 | | | **Arm 3a (Direct)** | **86.4% ± 0.0%** | **59.5% ± 0.0%** | — | **50.1 ± 1.0 ms** |
 | | | **Arm 3b (LiteLLM)** | **86.6% ± 0.0%** | **60.0% ± 0.0%** | — | **49.4 ± 0.9 ms** |
 
-> **Measurement Methodology & Latency Physics:**
-> This matrix is generated by replaying deterministic agent traces ($N=30$ iterations) through CacheAlign's local `HardenedKVCacheSimulator`. Because input token sequences in benchmark traces are identical across iterations, token-accounting variance is $\pm 0.0\%$. The reported p50 TTFT ($\sim 50\text{ ms}$) models hardware memory bus retrieval latency (KV-cache block fetch from high-bandwidth GPU memory vs $\sim 375\text{ ms}$ full prompt prefill computation), **not** live network round-trips over the public internet to hosted provider APIs.
+> **Measurement Methodology & Latency Physics (Synthetic / Non-Live):**
+> This table reflects an **offline trace-replay simulation** ($N=30$ iterations) using `HardenedKVCacheSimulator` (`execution_mode: deterministic_simulation`). Because input token sequences are deterministic across iterations, token-accounting variance is $\pm 0.0\%$. Simulated p50 TTFT ($\sim 50\text{ ms}$) is a synthetic uniform draw modeling cached block lookup vs $\sim 375\text{ ms}$ prefill, **not** live API calls over the network. Live multi-run provider validation across current models remains open and is required before claiming live cost savings.
 > 
-> For empirical validation with authentic network round-trips on production GPU clusters, see the live **NVIDIA NIM / Nemotron 3 Ultra 550B** benchmark above (Run #43703220052: 6,207 ms raw baseline vs 1,970 ms cached).
-> 
-> **Task Success & Model Behavior Guardrail:** Tool declaration canonicalization alters the sequence in which tool definitions are presented to the model. While syntactic tool execution schemas remain identical under RFC 8785, token ordering can influence tool choice in edge cases. Live multi-turn task success benchmarking across complex agentic workflows is maintained as an active evaluation requirement before claiming cost reduction without output divergence.
+> **Task Success & Model Behavior Guardrail:** Tool declaration canonicalization alters the sequence in which tool definitions are presented to the model. While syntactic tool execution schemas remain identical under RFC 8785, token ordering can influence tool choice in edge cases. Live multi-turn task success benchmarking across complex agentic workflows has not yet been executed and remains an active requirement before claiming cost reduction without output divergence.
 
 *Run the simulation locally: `python benchmarks/run_multirun_benchmark.py --iterations 30 --workload all --provider all`*
 
@@ -145,7 +143,7 @@ client = wrap(anthropic.Anthropic())
 
 # Works with standard messages.create:
 response = client.messages.create(
-    model="claude-3-7-sonnet-20250219",
+    model="claude-sonnet-4-6",
     max_tokens=1024,
     system="You are an enterprise research assistant.\nCurrent Time: 2026-10-03 10:00:00",
     tools=[{"name": "search_db", "description": "...", "input_schema": {...}}],
@@ -154,7 +152,7 @@ response = client.messages.create(
 
 # Works with streaming context managers:
 with client.messages.stream(
-    model="claude-3-7-sonnet-20250219",
+    model="claude-sonnet-4-6",
     max_tokens=1024,
     messages=[{"role": "user", "content": "Hello"}],
 ) as stream:
@@ -280,12 +278,12 @@ CacheAlign partitions the request:
 - **Aligned Prefix ($[0:m]$)**: Static system instructions and canonical tool schemas are locked at the beginning of the context window.
 - **Ephemeral Tail ($[m:]$)**: Volatile timestamps and transient session context are migrated to the prompt tail enclosed in `<cachealign_ephemeral_context>`.
 
-This allows the engine to hit the cached prefix across every turn, dropping time-to-first-token (TTFT) by over $70\%$.
+This stabilizes prefix matching on subsequent turns so cached tokens hit the warm-read tier rather than paying cold prefill rates (in the offline simulation matrix above, saving $\sim 59\%$–$60\%$ vs raw uncached Anthropic prompts).
 
 ### What is the "Cache Invalidation Surcharge"?
-On Anthropic Claude, setting `cache_control: {"type": "ephemeral"}` incurs an explicit **1.25× cache write surcharge** on first write (\$3.75/Mtok vs \$3.00/Mtok base input on Claude 3.5 Sonnet). 
+On Anthropic Claude, setting `cache_control: {"type": "ephemeral"}` incurs an explicit **1.25× cache write surcharge** on first write (\$3.75/Mtok vs \$3.00/Mtok base input on Claude Sonnet 4.6). 
 
-If an application's prompt prefix changes on every turn due to unaligned tools or volatile timestamps, the inference engine creates a new cache entry on *every turn* without ever reading from cache. Instead of saving money, the application pays the 1.25× write fee on every request, resulting in an immediate **+19.3% net cost penalty**. CacheAlign guarantees prefix stability so turns 2–10 hit the $0.10\times$ cache read tier (\$0.30/Mtok).
+If an application's prompt prefix changes on every turn due to unaligned tools or volatile timestamps, the inference engine creates a new cache entry on *every turn* without ever reading from cache. Instead of saving money, the application pays the 1.25× write fee on every request—resulting in a modeled **+19.3% net cost penalty** over uncached prompts in our offline simulation. CacheAlign preserves prefix stability so turns 2–10 hit the $0.10\times$ cache read tier (\$0.30/Mtok on Sonnet 4.6).
 
 ### Can I deploy CacheAlign without modifying client application code?
 Yes. CacheAlign supports passive infrastructure deployment:

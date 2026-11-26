@@ -21,7 +21,7 @@ def test_wrap_anthropic_client():
     wrapped = wrap(mock_client, verbose=False)
 
     resp = wrapped.messages.create(
-        model="claude-3-5-sonnet-20241022",
+        model="claude-sonnet-4-6",
         system="System prompt\nCurrent Time: 2026-10-03",
         messages=[{"role": "user", "content": "Hello"}],
     )

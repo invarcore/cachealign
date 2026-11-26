@@ -58,7 +58,7 @@ class WrappedMessagesResource:
     def create(self, *args: Any, **kwargs: Any) -> Any:
         optimized_kwargs = self._safe_optimize(kwargs)
         is_streaming = kwargs.get("stream", False)
-        model = kwargs.get("model", "claude-3-5-sonnet")
+        model = kwargs.get("model", "claude-sonnet-4-6")
 
         if self._is_async:
 
@@ -89,7 +89,7 @@ class WrappedMessagesResource:
         Preserves context manager syntax and auto-captures usage metrics upon completion.
         """
         optimized_kwargs = self._safe_optimize(kwargs)
-        model = kwargs.get("model", "claude-3-5-sonnet")
+        model = kwargs.get("model", "claude-sonnet-4-6")
 
         raw_manager = self._original.stream(*args, **optimized_kwargs)
         return WrappedMessageStreamManager(raw_manager, self._adapter, self._reporter, model)

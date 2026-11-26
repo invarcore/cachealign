@@ -174,12 +174,12 @@ class CacheProbeEngine:
 
         if self.provider == "anthropic":
             req_t1 = {
-                "model": "claude-3-5-sonnet",
+                "model": "claude-sonnet-4-6",
                 "system": f"Current Time: 2026-11-07 15:00:00 UTC\n{prefix_text}",
                 "messages": [{"role": "user", "content": "Run analysis"}],
             }
             req_t2 = {
-                "model": "claude-3-5-sonnet",
+                "model": "claude-sonnet-4-6",
                 "system": f"Current Time: 2026-11-07 15:01:00 UTC\n{prefix_text}",
                 "messages": [{"role": "user", "content": "Run analysis"}],
             }
@@ -290,7 +290,7 @@ class CacheProbeEngine:
                     )()
                 },
             )()
-            parsed_usage = self.adapter.parse_usage(mock_response, "claude-3-5-sonnet")
+            parsed_usage = self.adapter.parse_usage(mock_response, "claude-sonnet-4-6")
             total_accounted = (
                 parsed_usage.input_tokens
                 + parsed_usage.cache_creation_tokens
@@ -413,7 +413,7 @@ class CacheProbeEngine:
         # 2. Proxy / LiteLLM custom logger handler
         handler = CacheAlignLiteLLMHandler(config=self.config, verbose=False)
         litellm_data = {
-            "model": "claude-3-5-sonnet",
+            "model": "claude-sonnet-4-6",
             "messages": [{"role": "user", "content": "hi"}],
             "tools": [{"function": t} for t in tools],
         }

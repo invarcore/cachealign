@@ -99,7 +99,7 @@ class CacheSimulationHandler(BaseHTTPRequestHandler):
                     "text": "This is a verified live response from CacheAlign Local Simulation Server.",
                 }
             ],
-            "model": payload.get("model", "claude-3-5-sonnet-20241022"),
+            "model": payload.get("model", "claude-sonnet-4-6"),
             "stop_reason": "end_turn",
             "usage": {
                 "input_tokens": input_tokens,

@@ -18,10 +18,9 @@ from cachealign import wrap
 wrapped_client = wrap(anthropic.Anthropic())
 
 # 2. Pass the wrapped client directly to ChatAnthropic
-llm = ChatAnthropic(model_name="claude-3-5-sonnet-20241022", client=wrapped_client)
+llm = ChatAnthropic(model_name="claude-sonnet-4-6", client=wrapped_client)
 
-# 3. Use in your LangGraph ReAct agent
-# All graph cycles and tool turns now benefit from 85%+ cache hit rates!
+# 3. Use in your LangGraph ReAct agent (illustrative prefix stability flow)
 ```
 
 ---
@@ -37,7 +36,7 @@ import anthropic
 from cachealign import wrap
 
 wrapped_client = wrap(anthropic.Anthropic())
-custom_llm = ChatAnthropic(model="claude-3-5-sonnet-20241022", client=wrapped_client)
+custom_llm = ChatAnthropic(model="claude-sonnet-4-6", client=wrapped_client)
 
 researcher = Agent(
     role="Senior Market Analyst",
@@ -85,7 +84,7 @@ history = [{"role": "user", "content": "Solve the user query."}]
 
 while not task_finished:
     response = client.messages.create(
-        model="claude-3-5-sonnet-20241022",
+        model="claude-sonnet-4-6",
         system=MASSIVE_SYSTEM_INSTRUCTIONS,  # 20,000+ tokens
         tools=ALL_TOOLS,  # 30+ tools
         messages=history,

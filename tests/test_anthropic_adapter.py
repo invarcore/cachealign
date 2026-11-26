@@ -6,7 +6,7 @@ from cachealign.adapters.anthropic import AnthropicAdapter
 def test_anthropic_adapter_system_and_tools_optimization():
     adapter = AnthropicAdapter()
     kwargs = {
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-sonnet-4-6",
         "system": "System instructions for enterprise agent.\nCurrent Time: 2026-10-03 10:00:00",
         "tools": [
             {"name": "b_tool", "description": "tool b", "input_schema": {"type": "object"}},
@@ -44,7 +44,7 @@ def test_anthropic_adapter_parse_usage():
         )
     )
 
-    stats = adapter.parse_usage(mock_response, "claude-3-5-sonnet")
+    stats = adapter.parse_usage(mock_response, "claude-sonnet-4-6")
     assert stats.cached_tokens == 10000
     assert stats.cache_hit_rate > 90.0
     assert stats.estimated_cost_saved_usd > 0.02

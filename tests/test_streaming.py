@@ -30,7 +30,7 @@ def test_sync_streaming_anthropic():
     wrapped = wrap(mock_client, verbose=False)
 
     stream = wrapped.messages.create(
-        model="claude-3-5-sonnet-20241022",
+        model="claude-sonnet-4-6",
         system="System prompt",
         messages=[{"role": "user", "content": "Hi"}],
         stream=True,

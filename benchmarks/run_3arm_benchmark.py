@@ -47,7 +47,7 @@ from cachealign.integrations.litellm import CacheAlignLiteLLMHandler
 
 console = Console()
 
-# Pricing constants for Claude 3.5 Sonnet
+# Pricing constants for Anthropic Claude Sonnet 4.6
 PRICE_BASE_INPUT = SONNET_BASE_INPUT_PER_M / 1_000_000.0  # $0.000003 / tok ($3.00/M)
 PRICE_CACHE_WRITE = SONNET_CACHE_WRITE_PER_M / 1_000_000.0  # $0.00000375 / tok ($3.75/M, 1.25x)
 PRICE_CACHE_READ = SONNET_CACHE_READ_PER_M / 1_000_000.0  # $0.00000030 / tok ($0.30/M, 0.10x)
@@ -68,7 +68,7 @@ class PricingProfile:
 
 PRICING_PROFILES: dict[str, PricingProfile] = {
     "anthropic": PricingProfile(
-        name="Anthropic Claude Context Caching (Claude 3.5 Haiku / Claude 3.7 Sonnet Ratios)",
+        name="Anthropic Claude Sonnet 4.6 ($3.00 in, $3.75 write, $0.30 read, $15.00 out)",
         price_base_input=PRICE_BASE_INPUT,
         price_cache_write=PRICE_CACHE_WRITE,
         price_cache_read=PRICE_CACHE_READ,
@@ -256,7 +256,7 @@ class HardenedLiveExecutor:
                 import anthropic
 
                 self.client = anthropic.Anthropic(api_key=api_key)
-                self.model = model or "claude-3-5-sonnet-20241022"
+                self.model = model or "claude-sonnet-4-6"
             except ImportError as err:
                 raise ImportError(
                     "Live execution requires the 'anthropic' package. Install with `uv add anthropic`."
@@ -265,6 +265,27 @@ class HardenedLiveExecutor:
     def reset(self):
         """No-op for live execution (provider handles its own server-side cache)."""
         pass
+
+    def _compute_live_cost(
+        self,
+        *,
+        uncached_tokens: int,
+        cache_write_tokens: int,
+        cached_tokens: int,
+        output_tokens: int,
+        direct_cost: float | None,
+    ) -> float:
+        if direct_cost is not None and direct_cost > 0:
+            return float(direct_cost)
+        if self.provider == "anthropic":
+            return (
+                (cache_write_tokens * PRICE_CACHE_WRITE)
+                + (cached_tokens * PRICE_CACHE_READ)
+                + (uncached_tokens * PRICE_BASE_INPUT)
+                + (output_tokens * PRICE_OUTPUT)
+            )
+        # Do not fabricate dollar spend by billing non-Anthropic providers (e.g. NIM) at Anthropic rates
+        return 0.0
 
     def process_turn(
         self,
@@ -317,25 +338,53 @@ class HardenedLiveExecutor:
                 "model": self.model,
                 "max_tokens": OUTPUT_TOKENS_PER_TURN,
                 "messages": formatted_messages,
+                "stream": True,
+                "stream_options": {"include_usage": True},
             }
             if formatted_tools:
                 kwargs["tools"] = formatted_tools
 
             t0 = time.perf_counter()
-            response = self.client.chat.completions.create(**kwargs)
-            ttft_ms = (time.perf_counter() - t0) * 1000.0
+            ttft_ms: float | None = None
+            usage = None
+            response_id = "live_resp"
+            try:
+                stream = self.client.chat.completions.create(**kwargs)
+                for chunk in stream:
+                    response_id = getattr(chunk, "id", response_id) or response_id
+                    choices = getattr(chunk, "choices", None) or []
+                    if ttft_ms is None and choices:
+                        delta = getattr(choices[0], "delta", None)
+                        if delta and (getattr(delta, "content", None) or getattr(delta, "tool_calls", None)):
+                            ttft_ms = (time.perf_counter() - t0) * 1000.0
+                    chunk_usage = getattr(chunk, "usage", None)
+                    if chunk_usage is not None:
+                        usage = chunk_usage
+            except Exception:
+                usage = None
 
-            usage = response.usage
+            if usage is None:
+                fallback_kwargs = {k: v for k, v in kwargs.items() if k not in ("stream", "stream_options")}
+                t0 = time.perf_counter()
+                response = self.client.chat.completions.create(**fallback_kwargs)
+                ttft_ms = (time.perf_counter() - t0) * 1000.0
+                usage = response.usage
+                response_id = getattr(response, "id", "live_resp")
+            elif ttft_ms is None:
+                ttft_ms = (time.perf_counter() - t0) * 1000.0
+
             total_input_tokens = getattr(usage, "prompt_tokens", 0) or 0
             details = getattr(usage, "prompt_tokens_details", None)
-            cached_tokens = getattr(details, "cached_tokens", 0) if details else 0
-            cache_write_tokens = 0 if cached_tokens > 0 else total_input_tokens
+            cached_tokens = min(
+                total_input_tokens, getattr(details, "cached_tokens", 0) or 0 if details else 0
+            )
+            # Disjoint partition: implicit prefix caching has no explicit cache_write surcharge
+            cache_write_tokens = 0
             uncached_tokens = max(0, total_input_tokens - cached_tokens)
             output_tokens = (
                 getattr(usage, "completion_tokens", OUTPUT_TOKENS_PER_TURN)
                 or OUTPUT_TOKENS_PER_TURN
             )
-            response_id = getattr(response, "id", "live_resp")
             formatted_for_hash = formatted_messages[0]["content"] if formatted_messages else ""
             direct_cost = getattr(usage, "cost", None)
 
@@ -360,8 +409,17 @@ class HardenedLiveExecutor:
                 kwargs["tools"] = tools
 
             t0 = time.perf_counter()
-            response = self.client.messages.create(**kwargs)
-            ttft_ms = (time.perf_counter() - t0) * 1000.0
+            ttft_ms = None
+            with self.client.messages.stream(**kwargs) as stream:
+                for event in stream:
+                    if ttft_ms is None and getattr(event, "type", None) in (
+                        "content_block_start",
+                        "content_block_delta",
+                    ):
+                        ttft_ms = (time.perf_counter() - t0) * 1000.0
+                response = stream.get_final_message()
+            if ttft_ms is None:
+                ttft_ms = (time.perf_counter() - t0) * 1000.0
 
             usage = response.usage
             cached_tokens = getattr(usage, "cache_read_input_tokens", 0) or 0
@@ -374,15 +432,13 @@ class HardenedLiveExecutor:
             response_id = response.id
             formatted_for_hash = formatted_system
 
-        if self.provider == "openrouter" and direct_cost is not None and direct_cost > 0:
-            cost = direct_cost
-        else:
-            cost = (
-                (cache_write_tokens * PRICE_CACHE_WRITE)
-                + (cached_tokens * PRICE_CACHE_READ)
-                + (uncached_tokens * PRICE_BASE_INPUT)
-                + (output_tokens * PRICE_OUTPUT)
-            )
+        cost = self._compute_live_cost(
+            uncached_tokens=uncached_tokens,
+            cache_write_tokens=cache_write_tokens,
+            cached_tokens=cached_tokens,
+            output_tokens=output_tokens,
+            direct_cost=direct_cost,
+        )
         is_hit = cached_tokens > 0
         prefix_hash = hashlib.sha256(
             json.dumps(formatted_for_hash, default=str).encode()
@@ -660,6 +716,8 @@ def run_benchmark(
     with open(logs_file, "w", encoding="utf-8") as f:
         pass
 
+    run_salt = hashlib.sha256(f"{time.time_ns()}".encode()).hexdigest()[:10]
+
     for wk in selected_workloads:
         w_info = workload_defs[wk]
         w_name = w_info["name"]
@@ -671,6 +729,12 @@ def run_benchmark(
             executor.reset()
             messages = []
             turn_records: list[TurnMetric] = []
+            # Isolate live prefixes per arm so sequential arms never warm each other's prefix cache
+            sys_base = (
+                f"[BenchmarkArmRun:{run_salt}:{arm_id}]\n{w_info['system_base']}"
+                if backend == "live"
+                else w_info["system_base"]
+            )
 
             for turn in range(1, turns + 1):
                 timestamp_header = (
@@ -694,7 +758,7 @@ def run_benchmark(
                 # Determine payload structures per arm
                 if arm_id == "raw_baseline":
                     # Arm 1: Shuffled tools, volatile header embedded in system, no cache control
-                    sys_content = f"{timestamp_header}\n{w_info['system_base']}"
+                    sys_content = f"{timestamp_header}\n{sys_base}"
                     tools_payload = (
                         jitter_tool_list(w_info["tools"])
                         if w_info["has_tool_jitter"]
@@ -705,7 +769,7 @@ def run_benchmark(
 
                 elif arm_id == "naive_provider":
                     # Arm 2: Naive cache_control on system, BUT volatile header at line 1 and uncanonicalized tools
-                    sys_content = f"{timestamp_header}\n{w_info['system_base']}"
+                    sys_content = f"{timestamp_header}\n{sys_base}"
                     tools_payload = (
                         jitter_tool_list(w_info["tools"])
                         if w_info["has_tool_jitter"]
@@ -718,7 +782,7 @@ def run_benchmark(
 
                 elif arm_id == "cachealign_direct":
                     # Arm 3a: CacheAlign Direct SDK
-                    raw_sys = f"{timestamp_header}\n{w_info['system_base']}"
+                    raw_sys = f"{timestamp_header}\n{sys_base}"
                     raw_tools = (
                         jitter_tool_list(w_info["tools"])
                         if w_info["has_tool_jitter"]
@@ -750,7 +814,7 @@ def run_benchmark(
                         # Apply CacheAlign Anthropic Adapter optimization
                         opt_payload = anthropic_adapter.optimize_request(
                             {
-                                "model": "claude-3-5-sonnet",
+                                "model": "claude-sonnet-4-6",
                                 "system": raw_sys,
                                 "tools": raw_tools,
                                 "messages": messages,
@@ -763,7 +827,7 @@ def run_benchmark(
 
                 elif arm_id == "cachealign_litellm":
                     # Arm 3b: CacheAlign LiteLLM Gateway
-                    raw_sys = f"{timestamp_header}\n{w_info['system_base']}"
+                    raw_sys = f"{timestamp_header}\n{sys_base}"
                     raw_tools = (
                         jitter_tool_list(w_info["tools"])
                         if w_info["has_tool_jitter"]
@@ -771,7 +835,7 @@ def run_benchmark(
                     )
 
                     litellm_data = {
-                        "model": getattr(executor, "model", "claude-3-5-sonnet"),
+                        "model": getattr(executor, "model", "claude-sonnet-4-6"),
                         "messages": [{"role": "system", "content": raw_sys}, *messages],
                         "tools": [{"function": t} for t in raw_tools],
                     }
@@ -866,7 +930,7 @@ def run_benchmark(
             summary_matrix.append(data)
 
     # Output Console Summary Table
-    table = Table(title="Candidate C15: Hardened 3-Arm Benchmark Matrix (Sonnet 3.5 Engine)")
+    table = Table(title="Candidate C15: Hardened 3-Arm Benchmark Matrix (Claude Sonnet 4.6 Simulation / Live)")
     table.add_column("Workload", style="cyan")
     table.add_column("Arm", style="bold")
     table.add_column("Input Tokens", justify="right")

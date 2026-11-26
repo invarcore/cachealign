@@ -32,7 +32,7 @@ class TestFailOpenResilience:
         ):
             with caplog.at_level(logging.WARNING):
                 res = client.messages.create(
-                    model="claude-3-5-sonnet-20241022",
+                    model="claude-sonnet-4-6",
                     system="System prompt that would have been partitioned",
                     messages=[{"role": "user", "content": "Hello"}],
                     max_tokens=100,

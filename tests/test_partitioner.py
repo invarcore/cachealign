@@ -31,3 +31,16 @@ def test_partition_messages_and_system_ephemeral_tail_migration():
     # Check that volatile timestamp was migrated to the tail of the user message
     assert "Current Time:" in new_msgs[-1]["content"]
     assert "[Context:" in new_msgs[-1]["content"]
+
+
+def test_partition_structured_content_does_not_mutate_caller_dicts():
+    system = "Static instructions.\nSession-ID: sess-42"
+    original_block = {"type": "text", "text": "Analyze this payload."}
+    messages = [{"role": "user", "content": [original_block]}]
+
+    clean_sys, new_msgs, extracted = partition_messages_and_system(system, messages)
+
+    assert "Session-ID:" not in clean_sys
+    assert len(extracted) == 1
+    assert original_block["text"] == "Analyze this payload."
+    assert "Session-ID:" in new_msgs[-1]["content"][0]["text"]

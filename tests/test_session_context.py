@@ -21,7 +21,7 @@ def test_session_context_manager():
         )
         client = wrap(SimpleNamespace(messages=mock_messages), session=sess)
         client.messages.create(
-            model="claude-3-5-sonnet", messages=[{"role": "user", "content": "Hi"}]
+            model="claude-sonnet-4-6", messages=[{"role": "user", "content": "Hi"}]
         )
 
         assert sess.telemetry.total_cached_tokens == 2000

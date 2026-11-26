@@ -38,7 +38,7 @@ PROVIDER_MATRIX = [
         "base_url_env": "ANTHROPIC_BASE_URL",
         "default_base_url": "https://api.anthropic.com",
         "api_format": "anthropic",
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-sonnet-4-6",
         "tokens": 1500,
     },
     {
@@ -58,7 +58,7 @@ PROVIDER_MATRIX = [
         "base_url_env": "BEDROCK_BASE_URL",
         "default_base_url": "https://bedrock-runtime.us-east-1.amazonaws.com",
         "api_format": "anthropic",
-        "model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+        "model": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
         "tokens": 1500,
     },
     {

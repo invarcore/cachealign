@@ -12,7 +12,9 @@ Demonstrates:
   1. Unaligned Baseline: Prefix divergence due to tool shuffling and volatile headers
      forces 5 independent KV-cache allocation trees in GPU memory (0% page sharing, high VRAM).
   2. CacheAlign Aligned: Common prefix canonicalization locks the shared 3,200-token root,
-     achieving >75% KV block sharing, >65% GPU VRAM reduction, and ~7.5x TTFT speedup for subagents.
+     achieving ~85% simulated prefix sharing, ~56% simulated GPU VRAM reduction,
+     and ~3.9x simulated mean TTFT speedup for subagents (using uniform synthetic
+     latency draws coupled with PagedAttentionSimulator).
 """
 
 from __future__ import annotations

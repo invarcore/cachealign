@@ -17,7 +17,7 @@ from cachealign.config import CacheAlignConfig
 from cachealign.normalizers.partitioner import partition_messages_and_system
 from cachealign.normalizers.schema import canonicalize_tool_schemas
 
-# Anthropic Pricing per 1M tokens (Claude 3.5 Sonnet defaults)
+# Anthropic Pricing per 1M tokens (Claude Sonnet 4.6 / 4.5 defaults)
 SONNET_BASE_INPUT_PER_M = 3.00  # $3.00 / 1M
 SONNET_CACHE_WRITE_PER_M = 3.75  # 1.25x = $3.75 / 1M (5-min TTL)
 SONNET_CACHE_READ_PER_M = 0.30  # 0.10x = $0.30 / 1M (90% discount)

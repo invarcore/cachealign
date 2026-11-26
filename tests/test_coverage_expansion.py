@@ -176,7 +176,7 @@ class TestAnthropicAdapterCoverageGaps:
 
     def test_anthropic_parse_usage_none(self):
         adapter = AnthropicAdapter()
-        stats = adapter.parse_usage(None, "claude-3-5-sonnet")
+        stats = adapter.parse_usage(None, "claude-sonnet-4-6")
         assert stats.input_tokens == 0
         assert stats.cached_tokens == 0
 
@@ -246,7 +246,7 @@ class TestStreamingAndWrappersCoverageGaps:
 
         adapter = AnthropicAdapter()
         reporter = MagicMock()
-        wrapper = WrappedMessageStreamManager(mock_mgr, adapter, reporter, "claude-3-5-sonnet")
+        wrapper = WrappedMessageStreamManager(mock_mgr, adapter, reporter, "claude-sonnet-4-6")
 
         assert wrapper.extra_attr == 42
         async with wrapper as stream:

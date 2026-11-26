@@ -169,3 +169,50 @@ def test_verify_probe_invariants_pass_and_fail(tmp_path):
 
     with pytest.raises(AssertionError, match="below the required threshold"):
         verify_probe_invariants(fail_low, min_ctr=0.70)
+
+
+def test_live_executor_disjoint_token_partition_and_non_anthropic_cost():
+    from types import SimpleNamespace
+
+    from benchmarks.run_3arm_benchmark import HardenedLiveExecutor
+
+    executor = HardenedLiveExecutor(api_key="nvapi-test-key", provider="nvidia_nim")
+    mock_usage = SimpleNamespace(
+        prompt_tokens=2000,
+        completion_tokens=100,
+        prompt_tokens_details=SimpleNamespace(cached_tokens=0),
+    )
+
+    class _FakeStreamClient:
+        class _Completions:
+            @staticmethod
+            def create(**kwargs):
+                if kwargs.get("stream"):
+                    return iter(
+                        [
+                            SimpleNamespace(
+                                id="chunk_1",
+                                choices=[SimpleNamespace(delta=SimpleNamespace(content="ok", tool_calls=None))],
+                                usage=None,
+                            ),
+                            SimpleNamespace(id="chunk_2", choices=[], usage=mock_usage),
+                        ]
+                    )
+                return SimpleNamespace(id="resp_1", usage=mock_usage)
+
+        def __init__(self):
+            self.completions = self._Completions()
+
+    executor.client = SimpleNamespace(chat=_FakeStreamClient())
+    res = executor.process_turn(
+        arm="raw_baseline",
+        system="Static instructions",
+        tools=[],
+        messages=[{"role": "user", "content": "hi"}],
+        has_cache_control=False,
+    )
+    assert res["total_input_tokens"] == 2000
+    assert res["uncached_tokens"] + res["cache_write_tokens"] + res["cached_tokens"] == 2000
+    assert res["cache_write_tokens"] == 0
+    assert res["cost_usd"] == 0.0
+    assert res["response_id"] == "chunk_2"

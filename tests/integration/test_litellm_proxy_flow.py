@@ -23,7 +23,7 @@ def test_litellm_proxy_multi_turn_prefix_stability():
 
     # Turn 1: Tool ordering [tool_z, tool_a, tool_m] + timestamp at token 0
     turn_1_payload: dict[str, Any] = {
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-sonnet-4-6",
         "messages": [
             {
                 "role": "system",
@@ -61,7 +61,7 @@ def test_litellm_proxy_multi_turn_prefix_stability():
 
     # Turn 2: Tools shuffled [tool_m, tool_z, tool_a] + advanced timestamp
     turn_2_payload: dict[str, Any] = {
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-sonnet-4-6",
         "messages": [
             {
                 "role": "system",

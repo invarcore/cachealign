@@ -14,7 +14,9 @@ from cachealign.adapters.anthropic import (
     SONNET_BASE_INPUT_PER_M,
     SONNET_CACHE_READ_PER_M,
     SONNET_CACHE_WRITE_PER_M,
+    SONNET_OUTPUT_PER_M,
     AnthropicAdapter,
+    estimate_tokens,
 )
 from cachealign.config import CacheAlignConfig
 
@@ -65,8 +67,11 @@ def run_react_benchmark(turns: int = 10) -> dict:
     messages = []
 
     console.print(
-        f"[bold cyan]Running {turns}-Turn ReAct Benchmark (Claude 3.5 Sonnet Engine)...[/bold cyan]\n"
+        f"[bold cyan]Running {turns}-Turn Offline ReAct Cost Simulation (Claude Sonnet 4.6 Pricing Ratios)...[/bold cyan]\n"
     )
+
+    static_tools_tokens = estimate_tokens(RAW_TOOLS)
+    static_sys_tokens = estimate_tokens(BASE_SYSTEM_PROMPT)
 
     for turn in range(1, turns + 1):
         timestamp_str = f"Current Time: 2026-10-03 10:{turn:02d}:00"
@@ -81,54 +86,61 @@ def run_react_benchmark(turns: int = 10) -> dict:
         baseline_tools = list(RAW_TOOLS)
 
         # Baseline Token Calculation (No caching, fresh read every turn)
-        # Sys ~3500, tools ~2000, history ~150 * turn
-        turn_input_tokens = 3500 + 2000 + (150 * turn)
+        turn_sys_tokens = estimate_tokens(baseline_sys)
+        turn_tools_tokens = estimate_tokens(baseline_tools)
+        turn_history_tokens = estimate_tokens(messages)
+        turn_input_tokens = turn_sys_tokens + turn_tools_tokens + turn_history_tokens
         turn_output_tokens = 300
         baseline_cost = (turn_input_tokens / 1_000_000.0) * SONNET_BASE_INPUT_PER_M + (
             turn_output_tokens / 1_000_000.0
-        ) * 15.00
+        ) * SONNET_OUTPUT_PER_M
         baseline_total_cost += baseline_cost
         baseline_total_tokens += turn_input_tokens + turn_output_tokens
 
         # 2. CacheAlign Optimized Request
-        _opt_res = adapter.optimize_request(
+        opt_res = adapter.optimize_request(
             {
-                "model": "claude-3-5-sonnet",
+                "model": "claude-sonnet-4-6",
                 "system": baseline_sys,
                 "tools": baseline_tools,
-                "messages": messages,
+                "messages": list(messages),
             }
         )
+        opt_kwargs = opt_res.optimized_kwargs
+        opt_sys_tokens = estimate_tokens(opt_kwargs.get("system", ""))
+        opt_tools_tokens = estimate_tokens(opt_kwargs.get("tools", []))
+        opt_msg_tokens = estimate_tokens(opt_kwargs.get("messages", []))
+        opt_total_input_tokens = opt_sys_tokens + opt_tools_tokens + opt_msg_tokens
+        prefix_tokens = opt_sys_tokens + opt_tools_tokens
 
-        # Turn 1: Cache Write on System & Tools (5500 tokens)
-        # Turn 2+: Cache Read on System & Tools (5500 tokens @ 90% discount)
+        # Turn 1: Cache Write on canonical System & Tools prefix; Turn 2+: Cache Read on exact prefix
         if turn == 1:
-            ca_cache_write = 5500
+            ca_cache_write = prefix_tokens if prefix_tokens >= (static_sys_tokens + static_tools_tokens) * 0.9 else opt_total_input_tokens
             ca_cache_read = 0
-            ca_input = 150
+            ca_input = max(0, opt_total_input_tokens - ca_cache_write)
         else:
             ca_cache_write = 0
-            ca_cache_read = 5500
-            ca_input = 150 * turn
+            ca_cache_read = prefix_tokens
+            ca_input = opt_msg_tokens
 
         ca_cost = (
             (ca_input / 1_000_000.0) * SONNET_BASE_INPUT_PER_M
             + (ca_cache_write / 1_000_000.0) * SONNET_CACHE_WRITE_PER_M
             + (ca_cache_read / 1_000_000.0) * SONNET_CACHE_READ_PER_M
-            + (turn_output_tokens / 1_000_000.0) * 15.00
+            + (turn_output_tokens / 1_000_000.0) * SONNET_OUTPUT_PER_M
         )
         cachealign_total_cost += ca_cost
-        cachealign_total_tokens += turn_input_tokens + turn_output_tokens
+        cachealign_total_tokens += opt_total_input_tokens + turn_output_tokens
         cachealign_cached_tokens += ca_cache_read
 
-        hit_rate = (ca_cache_read / max(1, turn_input_tokens)) * 100.0
+        hit_rate = (ca_cache_read / max(1, opt_total_input_tokens)) * 100.0
 
         turn_metrics.append(
             {
                 "turn": turn,
                 "baseline_tokens": turn_input_tokens + turn_output_tokens,
                 "baseline_cost_usd": baseline_cost,
-                "cachealign_tokens": turn_input_tokens + turn_output_tokens,
+                "cachealign_tokens": opt_total_input_tokens + turn_output_tokens,
                 "cachealign_cached_tokens": ca_cache_read,
                 "cachealign_hit_rate_pct": round(hit_rate, 2),
                 "cachealign_cost_usd": ca_cost,
@@ -177,6 +189,8 @@ def run_react_benchmark(turns: int = 10) -> dict:
     )
 
     results = {
+        "execution_mode": "offline_cost_simulation",
+        "pricing_profile": "Claude Sonnet 4.6 ($3.00 in, $3.75 write, $0.30 read, $15.00 out)",
         "turns": turns,
         "baseline_total_cost_usd": round(baseline_total_cost, 4),
         "cachealign_total_cost_usd": round(cachealign_total_cost, 4),

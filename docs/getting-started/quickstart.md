@@ -53,7 +53,7 @@ conversation = [{"role": "user", "content": "Fetch details for customer CUST-104
 # Notice: Even if you put a dynamic timestamp in the system prompt,
 # CacheAlign automatically moves it to the dynamic tail so the prefix remains cached!
 response = client.messages.create(
-    model="claude-3-5-sonnet-20241022",
+    model="claude-sonnet-4-6",
     max_tokens=1024,
     system="You are an enterprise support assistant.\nCurrent Time: 2026-10-03 10:14:00",
     tools=tools,
@@ -63,14 +63,14 @@ response = client.messages.create(
 print(response.content[0].text)
 ```
 
-**Terminal Output:**
+**Terminal Output (Illustrative):**
 ```
-[CacheAlign] Turn 1 (claude-3-5-sonnet-20241022) | Hit: 0.0% (0 cached) | Saved: $0.0000 (Session: $0.000)
+[CacheAlign] Turn 1 (claude-sonnet-4-6) | Hit: 0.0% (0 cached) | Saved: $0.0000 (Session: $0.000)
 ```
 On subsequent turns:
 ```
-[CacheAlign] Turn 2 (claude-3-5-sonnet-20241022) | Hit: 94.2% (14,200 cached) | Saved: $0.0383 (Session: $0.038)
-[CacheAlign] Turn 3 (claude-3-5-sonnet-20241022) | Hit: 94.8% (15,100 cached) | Saved: $0.0408 (Session: $0.079)
+[CacheAlign] Turn 2 (claude-sonnet-4-6) | Hit: 94.2% (14,200 cached) | Saved: $0.0383 (Session: $0.038)
+[CacheAlign] Turn 3 (claude-sonnet-4-6) | Hit: 94.8% (15,100 cached) | Saved: $0.0408 (Session: $0.079)
 ```
 
 ---

@@ -125,7 +125,7 @@ class TestMultiTurnReActLoopParity:
         # Turn 1
         messages_turn_1 = [{"role": "user", "content": "Analyze account #9821."}]
         client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-sonnet-4-6",
             system=system_prompt,
             tools=tools,
             messages=messages_turn_1,
@@ -148,7 +148,7 @@ class TestMultiTurnReActLoopParity:
             },
         ]
         client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-sonnet-4-6",
             system=system_prompt,
             tools=tools,
             messages=messages_turn_2,

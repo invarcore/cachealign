@@ -2,14 +2,14 @@
 
 **CacheAlign** is an open-source prompt topology optimizer and prefix alignment middleware designed for multi-turn AI agents and production LLM applications.
 
-By automatically restructuring prompt payloads at runtime, CacheAlign enables your agents to achieve **85%+ prompt-cache hit rates** across **Anthropic Claude**, **OpenAI GPT-4o**, and **Google Gemini**—reducing inference costs by up to **80%** and cutting Time-to-First-Token (TTFT) in half with **zero application code rewrites**.
+By automatically restructuring prompt payloads at runtime, CacheAlign is designed to stabilize agent prompt prefixes across **Anthropic Claude**, **OpenAI GPT-4o**, and **Google Gemini**—reducing repeated input prefill spend (up to 90% on cached prefix tokens under Anthropic billing; simulation results range from ~55%–60% total multi-turn spend reduction) with **zero application code rewrites**.
 
 ---
 
 ## ⚡ The Problem: The Prompt Cache-Busting Epidemic
 
 Cloud LLMs offer deep discounts on cached prompt tokens:
-* **Anthropic Claude 3.5**: 90% discount on cache reads ($0.30/1M vs $3.00/1M base).
+* **Anthropic Claude**: 90% discount on cache reads ($0.30/1M vs $3.00/1M base on Claude Sonnet 4.6; up to 95% on Claude Sonnet 5.5 at $0.10/1M vs $2.00/1M).
 * **OpenAI GPT-4o**: 50% discount on cached reads ($1.25/1M vs $2.50/1M base).
 * **Google Gemini**: 90% discount on context cache reads.
 
@@ -33,7 +33,7 @@ graph LR
     C --> D["2. Relocates Timestamps to Tail"]
     D --> E["3. Injects Cache Breakpoints"]
     E -->|Optimized Call| F["Anthropic / OpenAI / Gemini"]
-    F -->|85%+ Cache Hits| G["80% Cost Reduction & 50% Lower TTFT"]
+    F -->|Stabilized Prefixes| G["Reduced Prefill Cost & Lower Latency (Simulated/Provider-Dependent)"]
 ```
 
 CacheAlign intercepts outbound model calls in-memory:
@@ -54,15 +54,15 @@ client = wrap(anthropic.Anthropic())
 
 # Run your agent loop normally
 response = client.messages.create(
-    model="claude-3-5-sonnet-20241022",
+    model="claude-sonnet-4-6",
     max_tokens=1024,
     system="Current Time: 2026-10-03 10:00:00\n\nYou are an enterprise research agent...",
     tools=my_tools,
     messages=conversation_history,
 )
 
-# Output in your terminal:
-# [CacheAlign] Turn 3 (claude-3-5-sonnet) | Hit: 91.4% (18,432 cached) | Saved: $0.0829 (Session: $0.341)
+# Illustrative output in your terminal:
+# [CacheAlign] Turn 3 (claude-sonnet-4-6) | Hit: 91.4% (18,432 cached) | Saved: $0.0829 (Session: $0.341)
 ```
 
 ---

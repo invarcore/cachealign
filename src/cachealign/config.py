@@ -24,7 +24,7 @@ class CacheAlignConfig:
 
     # Token Gatekeeper: Minimum prefix tokens required before setting a cache breakpoint.
     # Set to 0 to always inject breakpoints on system prompts and tools.
-    # Set to 1024 for strict Claude 3.5 Sonnet / Opus caching thresholds.
+    # Set to 1024 for minimum Anthropic Claude Sonnet / Opus caching thresholds.
     min_token_threshold: int = 0
 
     # Maximum cache breakpoints to inject per request (Anthropic hard limit is 4).

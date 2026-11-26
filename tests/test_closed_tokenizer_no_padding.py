@@ -39,7 +39,7 @@ def test_anthropic_closed_tokenizer_zero_synthetic_padding():
     original_bytes = len(static_prompt.encode("utf-8"))
 
     raw_kwargs = {
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-sonnet-4-6",
         "system": static_prompt,
         "messages": [{"role": "user", "content": "Audit this request."}],
     }
@@ -120,7 +120,7 @@ def test_volatile_tail_migration_preserves_static_prefix():
     expected_static = "You are an infallible cryptographic verifier."
 
     raw_kwargs = {
-        "model": "claude-3-5-sonnet-20241022",
+        "model": "claude-sonnet-4-6",
         "system": system_with_volatile,
         "messages": [{"role": "user", "content": "Verify signature."}],
     }
@@ -154,7 +154,7 @@ def test_wrap_client_closed_tokenizer_guarantee():
     static_system = "Audit system instructions with zero padding."
 
     wrapped_client.messages.create(
-        model="claude-3-5-sonnet-20241022",
+        model="claude-sonnet-4-6",
         system=static_system,
         messages=[{"role": "user", "content": "Execute."}],
     )

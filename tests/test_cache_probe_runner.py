@@ -49,7 +49,7 @@ def test_send_probe_request_anthropic_and_openai():
             base_url="https://api.anthropic.com",
             api_key="sk-ant-test",
             api_format="anthropic",
-            model="claude-3-5-sonnet",
+            model="claude-sonnet-4-6",
             prefix_text="sample",
             ttl_hint="1h",
         )
@@ -157,14 +157,16 @@ def test_run_probe_sequence_daily_smoke_mode():
     delays: list[float] = []
 
     def mock_send(base_url, api_key, api_format, model, prefix_text):
+        call_idx = getattr(mock_send, "calls", 0)
+        mock_send.calls = call_idx + 1
         return {
             "status": 200,
             "latency_ms": 15.0,
             "body": {
                 "usage": {
                     "input_tokens": 50,
-                    "cache_creation_input_tokens": 1200,
-                    "cache_read_input_tokens": 1200,
+                    "cache_creation_input_tokens": 1200 if call_idx == 0 else 0,
+                    "cache_read_input_tokens": 0 if call_idx == 0 else 1200,
                 }
             },
         }
@@ -174,7 +176,7 @@ def test_run_probe_sequence_daily_smoke_mode():
         base_url="https://api.anthropic.com",
         api_key="valid-key",
         api_format="anthropic",
-        model="claude-3-5-sonnet",
+        model="claude-sonnet-4-6",
         target_tokens=1200,
         mode="daily-smoke",
         send_fn=mock_send,
@@ -216,7 +218,7 @@ def test_run_probe_sequence_full_mode_and_invariants():
         base_url="https://api.anthropic.com",
         api_key="valid-key",
         api_format="anthropic",
-        model="claude-3-5-sonnet",
+        model="claude-sonnet-4-6",
         target_tokens=1200,
         ttl_check_seconds=65,
         mode="full",
@@ -286,7 +288,7 @@ def test_main_cli_execution_daily_smoke(tmp_path, monkeypatch):
                     "--api-format",
                     "anthropic",
                     "--model",
-                    "claude-3-5-sonnet",
+                    "claude-sonnet-4-6",
                     "--output-jsonl",
                     str(out_file),
                     "--mode",

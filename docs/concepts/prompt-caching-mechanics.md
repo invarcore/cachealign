@@ -31,7 +31,7 @@ In Transformer-based Large Language Models, input prompt tokens are converted in
 
 Because Anthropic charges a **$1.25\times$ premium** the first time content is written to the cache, you only achieve cost savings when that content is read again within the 5-minute TTL.
 
-Let's calculate the cost for a 10,000-token system prompt across 5 turns on Claude 3.5 Sonnet ($3.00/1M base):
+Let's calculate the cost for a 10,000-token system prompt across 5 turns on Claude Sonnet 4.6 ($3.00/1M base):
 
 ### Without Caching:
 $$\text{Cost} = 5 \times (10,000 / 1,000,000) \times \$3.00 = \$0.150$$
@@ -46,7 +46,7 @@ $$\text{Cost} = 5 \times (10,000 / 1,000,000) \times \$3.00 = \$0.150$$
 
 $$\text{Net Savings} = \frac{\$0.150 - \$0.0495}{\$0.150} = \mathbf{67.0\% \text{ Cost Reduction}}$$
 
-> **The Break-Even Point**: A 5-minute cache pays for itself after just **two cache hits**. In a typical 10-turn agent session, savings surpass **80%**.
+> **The Break-Even Point**: A 5-minute cache pays for itself after just **two cache hits**. In an illustrative 10-turn agent session (assuming stable prefixes), modeled prefix read savings surpass **80%**.
 
 ---
 

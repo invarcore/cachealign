@@ -68,7 +68,7 @@ def test_tenant_salt_isolation():
     adapter_tenant_b = AnthropicAdapter(tenant_id="tenant_beta")
 
     kwargs = {
-        "model": "claude-3-5-sonnet",
+        "model": "claude-sonnet-4-6",
         "system": "Base system instructions.",
         "messages": [{"role": "user", "content": "Hello"}],
     }
@@ -124,7 +124,7 @@ def test_fail_open_reliability():
 
     # The create call must NOT raise RuntimeError; it must fall open and call raw client
     resp = wrapped.messages.create(
-        model="claude-3-5-sonnet",
+        model="claude-sonnet-4-6",
         system="Hello",
         messages=[{"role": "user", "content": "Hi"}],
     )
@@ -165,7 +165,7 @@ def test_anthropic_message_stream_manager():
     wrapped = wrap(mock_client, verbose=False)
 
     with wrapped.messages.stream(
-        model="claude-3-5-sonnet",
+        model="claude-sonnet-4-6",
         system="System prompt",
         messages=[{"role": "user", "content": "Hi"}],
     ) as stream:

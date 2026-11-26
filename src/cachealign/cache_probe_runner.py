@@ -28,15 +28,16 @@ def _nfc(val: str) -> str:
     return unicodedata.normalize("NFC", val)
 
 
-def build_aligned_prefix(target_tokens: int = 1200) -> str:
+def build_aligned_prefix(target_tokens: int = 1200, salt: str | None = None) -> str:
     """
-    Generates a deterministic, high-entropy token block (>1024 tokens) so
+    Generates a high-entropy token block (>1024 tokens) so
     provider prefix caches engage reliably without synthetic repetition compression.
     """
     blocks: list[str] = []
     count = max(1, target_tokens // 16)
+    seed_prefix = f"invarcore-cachealign-{salt}-block-" if salt else "invarcore-cachealign-block-"
     for idx in range(count):
-        raw_seed = f"invarcore-cachealign-block-{idx}"
+        raw_seed = f"{seed_prefix}{idx}"
         digest = hashlib.sha256(raw_seed.encode("utf-8")).hexdigest()[:24]
         blocks.append(f"[BLK:{idx:04d}|DIGEST:{digest}|SPEC:MCP_2026_07_28_INVARIANT_CHECK]")
     return "\n".join(blocks)
@@ -170,10 +171,12 @@ def run_probe_sequence(
     mode: str = "full",
     send_fn: Callable[..., dict[str, Any]] | None = None,
     sleep_fn: Callable[[float], None] | None = None,
+    prefix_salt: str | None = None,
 ) -> list[ProbeObservation]:
     if not api_key or not api_key.strip():
         raise ValueError("api_key must be non-empty and non-whitespace.")
-    prefix_text = build_aligned_prefix(target_tokens)
+    effective_salt = prefix_salt or hashlib.sha256(f"{time.time_ns()}:{route_name}".encode()).hexdigest()[:12]
+    prefix_text = build_aligned_prefix(target_tokens, salt=effective_salt)
     prefix_hash = hashlib.sha256(prefix_text.encode("utf-8")).hexdigest()[:16]
     observations: list[ProbeObservation] = []
 
@@ -213,7 +216,9 @@ def run_probe_sequence(
         if not parsed["usage_field_present"]:
             failures.append("P4_MISSING_CACHE_USAGE_FIELD")
         c_read = parsed["cache_read_tokens"] or 0
-        if phase_name == "warm_10s" and c_read == 0:
+        if phase_name == "cold_seed" and c_read > 0:
+            failures.append("P0_PREWARMED_COLD_SEED")
+        elif phase_name == "warm_10s" and c_read == 0:
             failures.append("P1_ZERO_WARM_CACHE_ENGAGEMENT")
         elif phase_name in ("affinity_2", "affinity_3") and c_read == 0:
             failures.append("P5_ROUTE_AFFINITY_COLD_DROP")

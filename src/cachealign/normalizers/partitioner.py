@@ -78,7 +78,7 @@ def extract_volatile_elements(
         if not matched:
             kept_lines.append(line)
 
-    sanitized = "".join(kept_lines).strip()
+    sanitized = "".join(kept_lines).strip("\r\n")
     return sanitized, extracted
 
 
@@ -182,11 +182,14 @@ def partition_messages_and_system(
             # Append a distinct text block to avoid corrupting tool_result schema
             content_list.append({"type": "text", "text": context_block})
         else:
-            # Find last text block or append one
+            # Find last text block or append one without mutating caller dicts
             appended = False
-            for item in reversed(content_list):
+            for idx in range(len(content_list) - 1, -1, -1):
+                item = content_list[idx]
                 if isinstance(item, dict) and item.get("type") == "text":
-                    item["text"] = item.get("text", "") + context_block
+                    updated_item = dict(item)
+                    updated_item["text"] = updated_item.get("text", "") + context_block
+                    content_list[idx] = updated_item
                     appended = True
                     break
             if not appended:

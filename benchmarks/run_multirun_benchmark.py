@@ -271,7 +271,7 @@ def run_single_iteration(
                 else:
                     opt_payload = anthropic_adapter.optimize_request(
                         {
-                            "model": "claude-3-5-sonnet",
+                            "model": "claude-sonnet-4-6",
                             "system": raw_sys,
                             "tools": raw_tools,
                             "messages": messages,
@@ -291,7 +291,7 @@ def run_single_iteration(
                 )
 
                 litellm_data = {
-                    "model": "claude-3-5-sonnet",
+                    "model": "claude-sonnet-4-6",
                     "messages": [{"role": "system", "content": raw_sys}, *messages],
                     "tools": [{"function": t} for t in raw_tools],
                 }
@@ -421,10 +421,20 @@ def run_multirun_benchmark(
     workload_defs = get_workload_definitions()
     selected_workloads = list(workload_defs.keys() if workload_key == "all" else [workload_key])
 
+    # Override Anthropic pricing profile label so retired models are never referenced
+    PRICING_PROFILES["anthropic"].name = (
+        "Anthropic Claude Sonnet 4.6 ($3.00 in, $3.75 write, $0.30 read, $15.00 out)"
+    )
+
     if provider_key == "all":
         selected_providers = ["anthropic", "openai", "vllm"]
     else:
         selected_providers = [provider_key]
+
+    console.print(
+        "[bold yellow][SIMULATION MODE] Executing deterministic trace replay via HardenedKVCacheSimulator "
+        "(zero network calls; synthetic hardware timing).[/bold yellow]\n"
+    )
 
     raw_results_matrix: list[SingleIterationResult] = []
 
@@ -546,7 +556,10 @@ def run_multirun_benchmark(
     console.print(table)
 
     final_payload = {
-        "benchmark": "Candidate C15 Day-30 Multi-Run Benchmark",
+        "benchmark": "Candidate C15 Multi-Run Simulation Benchmark",
+        "execution_mode": "deterministic_simulation",
+        "is_live_api": False,
+        "simulator": "HardenedKVCacheSimulator",
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "iterations_n": iterations,
         "turns_per_run": turns,
@@ -571,6 +584,7 @@ def verify_multirun_truth_gate(
     summary_path: str | Path,
     min_iterations: int = 30,
     min_ctr: float = 0.60,
+    require_live: bool = False,
 ) -> bool:
     """Enforces Day-30 Truth Gate invariants on multi-run benchmark results."""
     p = Path(summary_path)
@@ -579,6 +593,11 @@ def verify_multirun_truth_gate(
 
     with open(p, encoding="utf-8") as f:
         data = json.load(f)
+
+    if require_live and not data.get("is_live_api", False):
+        raise AssertionError(
+            "FAIL: Summary reports deterministic_simulation (is_live_api=False) while require_live=True."
+        )
 
     n_runs = data.get("iterations_n", 0)
     if n_runs < min_iterations:
