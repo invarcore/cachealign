@@ -355,7 +355,9 @@ class HardenedLiveExecutor:
                     choices = getattr(chunk, "choices", None) or []
                     if ttft_ms is None and choices:
                         delta = getattr(choices[0], "delta", None)
-                        if delta and (getattr(delta, "content", None) or getattr(delta, "tool_calls", None)):
+                        if delta and (
+                            getattr(delta, "content", None) or getattr(delta, "tool_calls", None)
+                        ):
                             ttft_ms = (time.perf_counter() - t0) * 1000.0
                     chunk_usage = getattr(chunk, "usage", None)
                     if chunk_usage is not None:
@@ -364,7 +366,9 @@ class HardenedLiveExecutor:
                 usage = None
 
             if usage is None:
-                fallback_kwargs = {k: v for k, v in kwargs.items() if k not in ("stream", "stream_options")}
+                fallback_kwargs = {
+                    k: v for k, v in kwargs.items() if k not in ("stream", "stream_options")
+                }
                 t0 = time.perf_counter()
                 response = self.client.chat.completions.create(**fallback_kwargs)
                 ttft_ms = (time.perf_counter() - t0) * 1000.0
@@ -930,7 +934,9 @@ def run_benchmark(
             summary_matrix.append(data)
 
     # Output Console Summary Table
-    table = Table(title="Candidate C15: Hardened 3-Arm Benchmark Matrix (Claude Sonnet 4.6 Simulation / Live)")
+    table = Table(
+        title="Candidate C15: Hardened 3-Arm Benchmark Matrix (Claude Sonnet 4.6 Simulation / Live)"
+    )
     table.add_column("Workload", style="cyan")
     table.add_column("Arm", style="bold")
     table.add_column("Input Tokens", justify="right")

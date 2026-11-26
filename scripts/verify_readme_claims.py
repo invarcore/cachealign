@@ -122,7 +122,13 @@ def check_pypi_exists(pkg: str, retries: int = 3) -> tuple[bool, bool]:
                 time.sleep(1.0 * (attempt + 1))
                 continue
             return False, False
-        except (urllib.error.URLError, TimeoutError, OSError, UnicodeDecodeError, json.JSONDecodeError):
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            OSError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+        ):
             if attempt < retries - 1:
                 time.sleep(1.0 * (attempt + 1))
                 continue

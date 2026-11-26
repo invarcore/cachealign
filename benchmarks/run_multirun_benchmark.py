@@ -422,9 +422,9 @@ def run_multirun_benchmark(
     selected_workloads = list(workload_defs.keys() if workload_key == "all" else [workload_key])
 
     # Override Anthropic pricing profile label so retired models are never referenced
-    PRICING_PROFILES["anthropic"].name = (
-        "Anthropic Claude Sonnet 4.6 ($3.00 in, $3.75 write, $0.30 read, $15.00 out)"
-    )
+    PRICING_PROFILES[
+        "anthropic"
+    ].name = "Anthropic Claude Sonnet 4.6 ($3.00 in, $3.75 write, $0.30 read, $15.00 out)"
 
     if provider_key == "all":
         selected_providers = ["anthropic", "openai", "vllm"]

@@ -192,7 +192,11 @@ def test_live_executor_disjoint_token_partition_and_non_anthropic_cost():
                         [
                             SimpleNamespace(
                                 id="chunk_1",
-                                choices=[SimpleNamespace(delta=SimpleNamespace(content="ok", tool_calls=None))],
+                                choices=[
+                                    SimpleNamespace(
+                                        delta=SimpleNamespace(content="ok", tool_calls=None)
+                                    )
+                                ],
                                 usage=None,
                             ),
                             SimpleNamespace(id="chunk_2", choices=[], usage=mock_usage),

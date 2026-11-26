@@ -175,7 +175,9 @@ def run_probe_sequence(
 ) -> list[ProbeObservation]:
     if not api_key or not api_key.strip():
         raise ValueError("api_key must be non-empty and non-whitespace.")
-    effective_salt = prefix_salt or hashlib.sha256(f"{time.time_ns()}:{route_name}".encode()).hexdigest()[:12]
+    effective_salt = (
+        prefix_salt or hashlib.sha256(f"{time.time_ns()}:{route_name}".encode()).hexdigest()[:12]
+    )
     prefix_text = build_aligned_prefix(target_tokens, salt=effective_salt)
     prefix_hash = hashlib.sha256(prefix_text.encode("utf-8")).hexdigest()[:16]
     observations: list[ProbeObservation] = []

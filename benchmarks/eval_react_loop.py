@@ -115,7 +115,11 @@ def run_react_benchmark(turns: int = 10) -> dict:
 
         # Turn 1: Cache Write on canonical System & Tools prefix; Turn 2+: Cache Read on exact prefix
         if turn == 1:
-            ca_cache_write = prefix_tokens if prefix_tokens >= (static_sys_tokens + static_tools_tokens) * 0.9 else opt_total_input_tokens
+            ca_cache_write = (
+                prefix_tokens
+                if prefix_tokens >= (static_sys_tokens + static_tools_tokens) * 0.9
+                else opt_total_input_tokens
+            )
             ca_cache_read = 0
             ca_input = max(0, opt_total_input_tokens - ca_cache_write)
         else:
