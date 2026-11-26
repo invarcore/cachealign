@@ -32,6 +32,26 @@ class CacheAlignLiteLLMHandler:
         self.config = config or CacheAlignConfig(verbose=verbose)
         self.reporter = reporter or FinOpsReporter(verbose=self.config.verbose)
 
+    def pre_call_hook(
+        self,
+        user_api_key_dict: dict[str, Any],
+        cache: Any,
+        data: dict[str, Any],
+        call_type: str,
+    ) -> dict[str, Any]:
+        """Synchronous hook for LiteLLM CustomLogger interface."""
+        return self.async_pre_call_hook(user_api_key_dict, cache, data, call_type)
+
+    def log_success_event(
+        self,
+        kwargs: dict[str, Any],
+        response_obj: Any,
+        start_time: Any,
+        end_time: Any,
+    ) -> None:
+        """Synchronous hook for LiteLLM CustomLogger interface."""
+        self.async_log_success_event(kwargs, response_obj, start_time, end_time)
+
     def async_pre_call_hook(
         self,
         user_api_key_dict: dict[str, Any],

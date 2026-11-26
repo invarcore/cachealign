@@ -258,6 +258,36 @@ This spins up:
 1. `mock-cache-server`: Lightweight local KV-cache simulation server emulating real Anthropic & OpenAI prefix caching with latency simulation.
 2. `smoke-test`: Isolated client container running multi-turn ReAct loops across the bridge network to verify **~88% TTFT reduction** and **1,000 cached tokens**.
 
+## ❓ Frequently Asked Questions (FinOps Physics)
+
+### Why can't I just sort my tools with `sorted()` in Python?
+Sorting the top-level tool list with `sorted(tools, key=lambda x: x['name'])` is necessary but insufficient to guarantee provider KV-cache hits:
+1. **Nested Schema Dictionaries**: Enterprise tools feature deeply nested JSON schemas (`input_schema.properties.<param>.properties`). Python dictionaries preserve insertion order; any variation in dynamic dictionary construction or framework serialization across turns breaks byte-level identity. CacheAlign performs recursive object key canonicalization.
+2. **RFC 8785 Canonical Encoding**: CacheAlign applies RFC 8785 (JSON Canonicalization Scheme) to serialize tool definitions into byte-identical UTF-8 wire representations while preserving semantic array ordering (Section 3.2.3).
+3. **Cross-Provider Schema Mapping**: Normalizes tool schema representations across Anthropic (`name`, `input_schema`), OpenAI (`type: "function"`, `function: {name, parameters}`), and Gemini (`function_declarations`).
+
+### What is "Volatile Tail Migration" and why does token position matter?
+Provider KV caches (such as Anthropic prompt caching, OpenAI automatic caching, and vLLM PagedAttention) evaluate token sequences sequentially starting from index 0. If a runtime framework injects dynamic context (e.g. `Current Time: 2026-11-26 11:53:00`, transient user IDs, or ephemeral request headers) at token index 0, the KV-cache engine treats the entire downstream prompt as a cache miss ($0\%$ CTR). 
+
+CacheAlign partitions the request:
+- **Aligned Prefix ($[0:m]$)**: Static system instructions and canonical tool schemas are locked at the beginning of the context window.
+- **Ephemeral Tail ($[m:]$)**: Volatile timestamps and transient session context are migrated to the prompt tail enclosed in `<cachealign_ephemeral_context>`.
+
+This allows the engine to hit the cached prefix across every turn, dropping time-to-first-token (TTFT) by over $70\%$.
+
+### What is the "Cache Invalidation Surcharge"?
+On Anthropic Claude, setting `cache_control: {"type": "ephemeral"}` incurs an explicit **1.25× cache write surcharge** on first write (\$3.75/Mtok vs \$3.00/Mtok base input on Claude 3.5 Sonnet). 
+
+If an application's prompt prefix changes on every turn due to unaligned tools or volatile timestamps, the inference engine creates a new cache entry on *every turn* without ever reading from cache. Instead of saving money, the application pays the 1.25× write fee on every request, resulting in an immediate **+19.3% net cost penalty**. CacheAlign guarantees prefix stability so turns 2–10 hit the $0.10\times$ cache read tier (\$0.30/Mtok).
+
+### Can I deploy CacheAlign without modifying client application code?
+Yes. CacheAlign supports passive infrastructure deployment:
+- **LiteLLM Gateway Proxy**: Add `"cachealign.integrations.litellm.CacheAlignLiteLLMHandler"` to your LiteLLM `config.yaml` `callbacks`. Every upstream agent request routed through the proxy is stabilized automatically.
+- **Docker Sidecar Proxy**: Run `ghcr.io/invarcore/cachealign-proxy:latest` on localhost:8080 for polyglot runtimes (Node.js, Go, Rust, Java).
+- **LangChain / LangGraph**: Attach `CacheAlignCallbackHandler()` to any `RunnableConfig`.
+
+---
+
 ## 🔒 Security & STRIDE Threat Model
 
 CacheAlign incorporates built-in enterprise defense-in-depth:
