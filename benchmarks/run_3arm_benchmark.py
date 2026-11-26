@@ -56,6 +56,44 @@ PRICE_OUTPUT = 15.00 / 1_000_000.0  # $0.000015 / tok ($15.00/M)
 OUTPUT_TOKENS_PER_TURN = 250
 
 
+@dataclass
+class PricingProfile:
+    name: str
+    price_base_input: float
+    price_cache_write: float
+    price_cache_read: float
+    price_output: float
+    min_token_threshold: int = 1024
+
+
+PRICING_PROFILES: dict[str, PricingProfile] = {
+    "anthropic": PricingProfile(
+        name="Anthropic Claude 3.5 Sonnet",
+        price_base_input=PRICE_BASE_INPUT,
+        price_cache_write=PRICE_CACHE_WRITE,
+        price_cache_read=PRICE_CACHE_READ,
+        price_output=PRICE_OUTPUT,
+        min_token_threshold=1024,
+    ),
+    "openai": PricingProfile(
+        name="OpenAI GPT-4o",
+        price_base_input=2.50 / 1_000_000.0,
+        price_cache_write=2.50 / 1_000_000.0,
+        price_cache_read=1.25 / 1_000_000.0,
+        price_output=10.00 / 1_000_000.0,
+        min_token_threshold=1024,
+    ),
+    "vllm": PricingProfile(
+        name="Self-Hosted vLLM / OpenRouter Llama 3",
+        price_base_input=0.80 / 1_000_000.0,
+        price_cache_write=0.80 / 1_000_000.0,
+        price_cache_read=0.16 / 1_000_000.0,
+        price_output=2.40 / 1_000_000.0,
+        min_token_threshold=1024,
+    ),
+}
+
+
 # ==============================================================================
 # Simulation KV-Cache Physics Engine
 # ==============================================================================
@@ -69,8 +107,15 @@ class HardenedKVCacheSimulator:
     - Invalidation Penalty accounting: Repeated cache misses with cache_control pay 1.25x write fee.
     """
 
-    def __init__(self, min_token_threshold: int = 1024):
-        self.min_token_threshold = min_token_threshold
+    def __init__(
+        self,
+        min_token_threshold: int = 1024,
+        pricing: PricingProfile | None = None,
+    ):
+        self.pricing = pricing or PRICING_PROFILES["anthropic"]
+        self.min_token_threshold = (
+            min_token_threshold if pricing is None else pricing.min_token_threshold
+        )
         self.cache_registry: set[str] = set()
 
     def reset(self):
@@ -130,7 +175,9 @@ class HardenedKVCacheSimulator:
             cache_write_tokens = 0
             uncached_tokens = total_input_tokens
             ttft_ms = random.uniform(340.0, 410.0)
-            cost = (total_input_tokens * PRICE_BASE_INPUT) + (OUTPUT_TOKENS_PER_TURN * PRICE_OUTPUT)
+            cost = (total_input_tokens * self.pricing.price_base_input) + (
+                OUTPUT_TOKENS_PER_TURN * self.pricing.price_output
+            )
             is_hit = False
         else:
             # Arm 2, Arm 3a, Arm 3b: Caching active
@@ -141,9 +188,9 @@ class HardenedKVCacheSimulator:
                 uncached_tokens = history_tokens
                 ttft_ms = random.uniform(38.0, 58.0)
                 cost = (
-                    (cached_tokens * PRICE_CACHE_READ)
-                    + (uncached_tokens * PRICE_BASE_INPUT)
-                    + (OUTPUT_TOKENS_PER_TURN * PRICE_OUTPUT)
+                    (cached_tokens * self.pricing.price_cache_read)
+                    + (uncached_tokens * self.pricing.price_base_input)
+                    + (OUTPUT_TOKENS_PER_TURN * self.pricing.price_output)
                 )
                 is_hit = True
             else:
@@ -153,11 +200,11 @@ class HardenedKVCacheSimulator:
                 cache_write_tokens = prefix_tokens
                 uncached_tokens = history_tokens
                 ttft_ms = random.uniform(350.0, 440.0)
-                # Cache creation surcharge (1.25x on Anthropic)
+                # Cache creation surcharge (1.25x on Anthropic, 1.0x on OpenAI/vLLM)
                 cost = (
-                    (cache_write_tokens * PRICE_CACHE_WRITE)
-                    + (uncached_tokens * PRICE_BASE_INPUT)
-                    + (OUTPUT_TOKENS_PER_TURN * PRICE_OUTPUT)
+                    (cache_write_tokens * self.pricing.price_cache_write)
+                    + (uncached_tokens * self.pricing.price_base_input)
+                    + (OUTPUT_TOKENS_PER_TURN * self.pricing.price_output)
                 )
                 is_hit = False
 
@@ -512,6 +559,7 @@ def run_benchmark(
     live_provider: str | None = None,
     api_key: str | None = None,
     model: str | None = None,
+    pricing_profile: str = "anthropic",
 ) -> dict[str, Any]:
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
@@ -586,7 +634,8 @@ def run_benchmark(
         console.print(f"[bold magenta]▶ Live Provider Selected: [{prov.upper()}][/bold magenta]")
         executor = HardenedLiveExecutor(api_key=key, provider=prov, model=model)
     else:
-        executor = HardenedKVCacheSimulator(min_token_threshold=1024)
+        pricing = PRICING_PROFILES.get(pricing_profile, PRICING_PROFILES["anthropic"])
+        executor = HardenedKVCacheSimulator(min_token_threshold=1024, pricing=pricing)
 
     workload_defs = get_workload_definitions()
     selected_workloads = workload_defs.keys() if workload_key == "all" else [workload_key]
@@ -854,7 +903,9 @@ def run_benchmark(
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "backend": backend,
         "turns": turns,
-        "pricing_model": "Anthropic Claude 3.5 Sonnet ($3.00 in, $3.75 write, $0.30 read, $15.00 out)",
+        "pricing_model": pricing.name
+        if backend == "simulation"
+        else f"Live {getattr(executor, 'provider', 'provider')}",
         "summary": summary_matrix,
     }
 

@@ -88,6 +88,27 @@ Empirical validation executed live on NVIDIA NIM GPU inference clusters within G
 
 *In isolated 2-turn smoke probes (`cache_probe_runner.py`), wire TTFT latency dropped from **7,550 ms to 1,970 ms (-73.9%)** with **82.2% CTR**. See [observatory/README.md](observatory/README.md) and [observatory/ANCHORS.md](observatory/ANCHORS.md) for cryptographic ledger anchors.*
 
+### Multi-Run Statistical Benchmark Matrix (N=30 Iterations, 95% Student's t CI)
+
+Statistically verified across $N=30$ independent runs per provider/workload arm with exact Student's $t$ confidence bounds ($\nu=29, t_{0.025, 29} = 2.045$):
+
+| Provider | Workload | Arm | Cached Token Ratio (CTR) | Cost Savings vs Raw | Invalidation Penalty | p50 TTFT (Simulated) |
+| :--- | :--- | :--- | :---: | :---: | :---: | :---: |
+| **Anthropic** | Enterprise Data Agent | Arm 1 (Raw) | 0.0% ± 0.0% | — | — | 373.5 ± 3.4 ms |
+| | | Arm 2 (Naive) | 0.0% ± 0.0% | — | +19.3% | 400.5 ± 5.9 ms |
+| | | **Arm 3a (Direct)** | **86.4% ± 0.0%** | **59.7% ± 0.0%** | — | **50.3 ± 1.0 ms** |
+| | | **Arm 3b (LiteLLM)** | **86.6% ± 0.0%** | **60.1% ± 0.0%** | — | **50.0 ± 1.2 ms** |
+| **OpenAI** | Enterprise Data Agent | Arm 1 (Raw) | 0.0% ± 0.0% | — | — | 374.8 ± 3.9 ms |
+| | | Arm 2 (Naive) | 0.0% ± 0.0% | — | — | 398.9 ± 3.9 ms |
+| | | **Arm 3a (Direct)** | **86.7% ± 0.0%** | **34.5% ± 0.0%** | — | **49.7 ± 0.9 ms** |
+| | | **Arm 3b (LiteLLM)** | **86.6% ± 0.0%** | **35.8% ± 0.0%** | — | **49.3 ± 1.1 ms** |
+| **vLLM** | Enterprise Data Agent | Arm 1 (Raw) | 0.0% ± 0.0% | — | — | 379.9 ± 4.0 ms |
+| | | Arm 2 (Naive) | 0.0% ± 0.0% | — | — | 398.1 ± 4.5 ms |
+| | | **Arm 3a (Direct)** | **86.4% ± 0.0%** | **59.5% ± 0.0%** | — | **50.1 ± 1.0 ms** |
+| | | **Arm 3b (LiteLLM)** | **86.6% ± 0.0%** | **60.0% ± 0.0%** | — | **49.4 ± 0.9 ms** |
+
+*Run the statistical multi-run benchmark: `python benchmarks/run_multirun_benchmark.py --iterations 30 --workload all --provider all`*
+
 ---
 
 ## 🚀 Quickstart (Python SDK)
