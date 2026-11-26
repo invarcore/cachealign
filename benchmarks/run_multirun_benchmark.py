@@ -23,10 +23,14 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
+import os
 import sys
 import time
+import urllib.error
+import urllib.request
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -41,6 +45,7 @@ if str(ROOT_DIR) not in sys.path:
 from benchmarks.run_3arm_benchmark import (  # noqa: E402
     PRICING_PROFILES,
     HardenedKVCacheSimulator,
+    HardenedLiveExecutor,
     PricingProfile,
     TurnMetric,
     get_workload_definitions,
@@ -180,9 +185,16 @@ def run_single_iteration(
     workload_defs: dict[str, Any],
     turns: int = 10,
     logs_file: Path | None = None,
+    backend: str = "simulation",
+    live_executor: HardenedLiveExecutor | None = None,
+    preloaded_arms: dict[str, list[dict[str, Any]]] | None = None,
 ) -> dict[str, SingleIterationResult]:
-    """Runs a single iteration of all 4 arms for a given workload and pricing profile."""
-    executor = HardenedKVCacheSimulator(min_token_threshold=1024, pricing=pricing)
+    """Runs a single iteration of all 4 arms for a given workload and pricing profile or live backend."""
+    executor: Any = (
+        live_executor
+        if backend == "live" and live_executor is not None
+        else HardenedKVCacheSimulator(min_token_threshold=1024, pricing=pricing)
+    )
 
     w_info = workload_defs[workload_key]
     arms = [
@@ -198,13 +210,22 @@ def run_single_iteration(
         config=CacheAlignConfig(min_token_threshold=1024), verbose=False
     )
 
-    arm_outputs: dict[str, SingleIterationResult] = {}
-    costs: dict[str, float] = {}
+    arm_turn_records: dict[str, list[dict[str, Any]]] = {}
+    iter_salt = hashlib.sha256(f"{time.time_ns()}:{iteration_idx}".encode()).hexdigest()[:10]
 
-    for arm_label, arm_id in arms:
+    for _arm_label, arm_id in arms:
+        if preloaded_arms and arm_id in preloaded_arms:
+            arm_turn_records[arm_id] = preloaded_arms[arm_id]
+            continue
+
         executor.reset()
         messages: list[dict[str, Any]] = []
-        turn_records: list[TurnMetric] = []
+        turn_records: list[dict[str, Any]] = []
+        sys_base = (
+            f"[MultiRunLive:{iter_salt}:{arm_id}]\n{w_info['system_base']}"
+            if backend == "live"
+            else w_info["system_base"]
+        )
 
         for turn in range(1, turns + 1):
             timestamp_header = f"Current Time: 2026-11-26 14:{turn:02d}:00 UTC\nSession-ID: sess_iter_{iteration_idx}_{turn}"
@@ -225,7 +246,7 @@ def run_single_iteration(
             messages.append({"role": "user", "content": user_content})
 
             if arm_id == "raw_baseline":
-                sys_content = f"{timestamp_header}\n{w_info['system_base']}"
+                sys_content = f"{timestamp_header}\n{sys_base}"
                 tools_payload = (
                     jitter_tool_list(w_info["tools"])
                     if w_info["has_tool_jitter"]
@@ -235,7 +256,7 @@ def run_single_iteration(
                 turn_messages = messages
 
             elif arm_id == "naive_provider":
-                sys_content = f"{timestamp_header}\n{w_info['system_base']}"
+                sys_content = f"{timestamp_header}\n{sys_base}"
                 tools_payload = (
                     jitter_tool_list(w_info["tools"])
                     if w_info["has_tool_jitter"]
@@ -245,17 +266,20 @@ def run_single_iteration(
                 turn_messages = messages
 
             elif arm_id == "cachealign_direct":
-                raw_sys = f"{timestamp_header}\n{w_info['system_base']}"
+                raw_sys = f"{timestamp_header}\n{sys_base}"
                 raw_tools = (
                     jitter_tool_list(w_info["tools"])
                     if w_info["has_tool_jitter"]
                     else list(w_info["tools"])
                 )
 
-                if provider_name == "openai":
+                if provider_name == "openai" or (
+                    backend == "live"
+                    and getattr(executor, "provider", None) in ("nvidia", "nvidia_nim")
+                ):
                     opt_payload = openai_adapter.optimize_request(
                         {
-                            "model": "gpt-4o",
+                            "model": getattr(executor, "model", "gpt-4o"),
                             "system": raw_sys,
                             "tools": [{"type": "function", "function": t} for t in raw_tools],
                             "messages": messages,
@@ -283,7 +307,7 @@ def run_single_iteration(
                     turn_messages = opt_payload.optimized_kwargs.get("messages", messages)
 
             elif arm_id == "cachealign_litellm":
-                raw_sys = f"{timestamp_header}\n{w_info['system_base']}"
+                raw_sys = f"{timestamp_header}\n{sys_base}"
                 raw_tools = (
                     jitter_tool_list(w_info["tools"])
                     if w_info["has_tool_jitter"]
@@ -291,7 +315,7 @@ def run_single_iteration(
                 )
 
                 litellm_data = {
-                    "model": "claude-sonnet-4-6",
+                    "model": getattr(executor, "model", "claude-sonnet-4-6"),
                     "messages": [{"role": "system", "content": raw_sys}, *messages],
                     "tools": [{"function": t} for t in raw_tools],
                 }
@@ -326,7 +350,7 @@ def run_single_iteration(
                 is_hit=res["is_hit"],
                 prefix_hash=res["prefix_hash"],
             )
-            turn_records.append(metric)
+            turn_records.append(asdict(metric))
 
             if logs_file:
                 record_entry = asdict(metric)
@@ -342,17 +366,44 @@ def run_single_iteration(
                 }
             )
 
-        total_in = sum(m.total_input_tokens for m in turn_records)
-        total_cached = sum(m.cached_tokens for m in turn_records)
-        total_cost = sum(m.cost_usd for m in turn_records)
+        arm_turn_records[arm_id] = turn_records
+
+    return _compute_iteration_arm_outputs(
+        iteration_idx=iteration_idx,
+        provider_name=provider_name,
+        workload_key=workload_key,
+        arm_turn_records=arm_turn_records,
+    )
+
+
+def _compute_iteration_arm_outputs(
+    iteration_idx: int,
+    provider_name: str,
+    workload_key: str,
+    arm_turn_records: dict[str, list[dict[str, Any]]],
+) -> dict[str, SingleIterationResult]:
+    """Compute per-arm SingleIterationResult metrics and relative savings from turn records."""
+    arms = [
+        ("Arm 1", "raw_baseline"),
+        ("Arm 2", "naive_provider"),
+        ("Arm 3a", "cachealign_direct"),
+        ("Arm 3b", "cachealign_litellm"),
+    ]
+    arm_outputs: dict[str, SingleIterationResult] = {}
+    costs: dict[str, float] = {}
+
+    for arm_label, arm_id in arms:
+        turn_records = arm_turn_records[arm_id]
+        total_in = sum(int(m["total_input_tokens"]) for m in turn_records)
+        total_cached = sum(int(m["cached_tokens"]) for m in turn_records)
+        total_cost = sum(float(m["cost_usd"]) for m in turn_records)
         ctr = (total_cached / max(1, total_in)) * 100.0
 
-        ttfts = sorted(m.ttft_ms for m in turn_records)
+        ttfts = sorted(float(m["ttft_ms"]) for m in turn_records)
         p50_ttft = ttfts[len(ttfts) // 2]
         p95_ttft = ttfts[int(len(ttfts) * 0.95)]
 
         costs[arm_id] = total_cost
-
         arm_outputs[arm_id] = SingleIterationResult(
             iteration=iteration_idx,
             provider=provider_name,
@@ -385,25 +436,244 @@ def run_single_iteration(
     return arm_outputs
 
 
+class InsufficientCreditsError(RuntimeError):
+    """Raised when an API provider reports zero remaining paid credits pre-flight."""
+
+
+def check_openrouter_credits(api_key: str, timeout: float = 10.0) -> float:
+    """Query OpenRouter /api/v1/credits and return remaining USD credit balance."""
+    req = urllib.request.Request(
+        "https://openrouter.ai/api/v1/credits",
+        headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    data = payload.get("data") or {}
+    total_credits = float(data.get("total_credits", 0.0) or 0.0)
+    total_usage = float(data.get("total_usage", 0.0) or 0.0)
+    return round(total_credits - total_usage, 6)
+
+
+def _is_quota_or_payment_error(exc: Exception) -> bool:
+    """Return True if an exception represents HTTP 402 payment required or 429 quota/rate limit."""
+    if getattr(exc, "status_code", None) in (402, 429):
+        return True
+    msg = str(exc).lower()
+    return any(
+        marker in msg
+        for marker in (
+            "402",
+            "payment required",
+            "insufficient credit",
+            "insufficient_quota",
+            "more credits",
+            "rate_limit",
+            "429",
+        )
+    )
+
+
+def _load_completed_iterations(
+    logs_file: Path,
+    turns: int,
+) -> tuple[dict[tuple[str, str, int], dict[str, list[dict[str, Any]]]], list[dict[str, Any]]]:
+    """Load completed per-arm runs (of length == turns) from an existing JSONL log."""
+    expected_arms = ("raw_baseline", "naive_provider", "cachealign_direct", "cachealign_litellm")
+    grouped: dict[tuple[str, str, int], dict[str, list[dict[str, Any]]]] = {}
+    if not logs_file.exists():
+        return {}, []
+
+    for line in logs_file.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        key = (
+            str(row.get("provider", "")),
+            str(row.get("workload", "")),
+            int(row.get("iteration", 0)),
+        )
+        arm = str(row.get("arm", ""))
+        if arm in expected_arms and key[2] > 0:
+            grouped.setdefault(key, {a: [] for a in expected_arms})[arm].append(row)
+
+    resumed_arms: dict[tuple[str, str, int], dict[str, list[dict[str, Any]]]] = {}
+    retained_rows: list[dict[str, Any]] = []
+    for key in sorted(grouped):
+        arm_map = grouped[key]
+        complete_arms = {a: arm_map[a] for a in expected_arms if len(arm_map[a]) == turns}
+        if complete_arms:
+            resumed_arms[key] = complete_arms
+            for a in expected_arms:
+                if a in complete_arms:
+                    retained_rows.extend(complete_arms[a])
+    return resumed_arms, retained_rows
+
+
+def _write_summary_artifact(
+    *,
+    raw_results_matrix: list[SingleIterationResult],
+    selected_providers: list[str],
+    selected_workloads: list[str],
+    backend: str,
+    live_executor: HardenedLiveExecutor | None,
+    requested_iterations: int,
+    turns: int,
+    duration_sec: float,
+    results_file: Path,
+    status: str = "complete",
+    stop_reason: str | None = None,
+    render_table: bool = True,
+) -> dict[str, Any]:
+    """Aggregate completed iteration results, optionally render table, and write summary JSON."""
+    aggregated_summary: list[dict[str, Any]] = []
+    arms = [
+        ("Arm 1", "raw_baseline"),
+        ("Arm 2", "naive_provider"),
+        ("Arm 3a", "cachealign_direct"),
+        ("Arm 3b", "cachealign_litellm"),
+    ]
+
+    completed_counts: list[int] = []
+    for p_name in selected_providers:
+        for wk in selected_workloads:
+            for arm_label, arm_id in arms:
+                slice_records = [
+                    r
+                    for r in raw_results_matrix
+                    if r.provider == p_name and r.workload == wk and r.arm_id == arm_id
+                ]
+                completed_counts.append(len(slice_records))
+                row_data = {
+                    "provider": p_name,
+                    "provider_name": (
+                        f"Live {p_name} ({live_executor.model})"
+                        if backend == "live" and live_executor
+                        else PRICING_PROFILES[p_name].name
+                    ),
+                    "workload": wk,
+                    "arm_id": arm_id,
+                    "arm_label": arm_label,
+                    "n_iterations": len(slice_records),
+                    "cached_token_ratio": compute_distribution_stats(
+                        [r.cached_token_ratio_pct for r in slice_records]
+                    ),
+                    "total_cost_usd": compute_distribution_stats(
+                        [r.total_cost_usd for r in slice_records]
+                    ),
+                    "savings_vs_raw_pct": compute_distribution_stats(
+                        [r.savings_vs_raw_pct for r in slice_records]
+                    ),
+                    "savings_vs_naive_pct": compute_distribution_stats(
+                        [r.savings_vs_naive_pct for r in slice_records]
+                    ),
+                    "invalidation_penalty_pct": compute_distribution_stats(
+                        [r.invalidation_penalty_pct for r in slice_records]
+                    ),
+                    "p50_ttft_ms": compute_distribution_stats(
+                        [r.p50_ttft_ms for r in slice_records]
+                    ),
+                }
+                aggregated_summary.append(row_data)
+
+    completed_n = min(completed_counts) if completed_counts else 0
+
+    if render_table:
+        table = Table(
+            title=f"CacheAlign Multi-Run Statistical Benchmark Matrix (N={completed_n} Iterations, 95% Student's t CI)"
+        )
+        table.add_column("Provider", style="cyan")
+        table.add_column("Workload", style="yellow")
+        table.add_column("Arm", style="bold")
+        table.add_column("CTR (%) [Mean ± 95% CI]", justify="right", style="magenta")
+        table.add_column("Cost Savings vs Raw (%)", justify="right", style="green")
+        table.add_column("Invalidation Penalty", justify="right", style="red")
+        table.add_column("p50 TTFT (ms) [Mean ± CI]", justify="right")
+
+        for row in aggregated_summary:
+            ctr = row["cached_token_ratio"]
+            ctr_str = f"{ctr['mean']:.1f}% ± {(ctr['ci95_upper'] - ctr['mean']):.2f}%"
+            sav_raw = row["savings_vs_raw_pct"]
+            sav_str = (
+                f"{sav_raw['mean']:.1f}% ± {(sav_raw['ci95_upper'] - sav_raw['mean']):.2f}%"
+                if sav_raw["mean"] > 0
+                else "-"
+            )
+            pen = row["invalidation_penalty_pct"]
+            pen_str = f"+{pen['mean']:.1f}%" if pen["mean"] > 0 else "-"
+            ttft = row["p50_ttft_ms"]
+            ttft_str = f"{ttft['mean']:.1f} ± {(ttft['ci95_upper'] - ttft['mean']):.1f}ms"
+            table.add_row(
+                row["provider"],
+                row["workload"],
+                row["arm_label"],
+                ctr_str,
+                sav_str,
+                pen_str,
+                ttft_str,
+            )
+        console.print(table)
+
+    final_payload: dict[str, Any] = {
+        "benchmark": (
+            "Candidate C15 Multi-Run Live API Benchmark"
+            if backend == "live"
+            else "Candidate C15 Multi-Run Simulation Benchmark"
+        ),
+        "execution_mode": "live_api" if backend == "live" else "deterministic_simulation",
+        "is_live_api": backend == "live",
+        "status": status,
+        "stop_reason": stop_reason,
+        "simulator": None if backend == "live" else "HardenedKVCacheSimulator",
+        "live_model": live_executor.model if backend == "live" and live_executor else None,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "iterations_n": completed_n,
+        "completed_iterations_n": completed_n,
+        "requested_iterations_n": requested_iterations,
+        "turns_per_run": turns,
+        "duration_seconds": duration_sec,
+        "confidence_level": 0.95,
+        "providers_evaluated": selected_providers,
+        "workloads_evaluated": selected_workloads,
+        "summary": aggregated_summary,
+    }
+    with open(results_file, "w", encoding="utf-8") as f:
+        json.dump(final_payload, f, indent=2)
+    return final_payload
+
+
 def run_multirun_benchmark(
     iterations: int = 30,
     workload_key: str = "all",
     provider_key: str = "all",
     turns: int = 10,
     output_dir: str = "benchmarks/results",
+    backend: str = "simulation",
+    live_provider: str | None = None,
+    api_key: str | None = None,
+    model: str | None = None,
+    resume: bool = False,
+    checkpoint_every: int = 5,
 ) -> dict[str, Any]:
     """
-    Executes N automated benchmark iterations across selected workloads and provider pricing models,
-    aggregating full distributions and computing 95% confidence intervals.
+    Executes N automated benchmark iterations across selected workloads and provider pricing models
+    (or live endpoints when backend='live'), aggregating distributions and 95% confidence intervals.
     """
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
-    logs_file = out_path / "multirun_benchmark_logs.jsonl"
-    results_file = out_path / "multirun_benchmark_summary.json"
+    file_prefix = "multirun_live" if backend == "live" else "multirun_benchmark"
+    logs_file = out_path / f"{file_prefix}_logs.jsonl"
+    results_file = out_path / f"{file_prefix}_summary.json"
 
-    # Reset log file
-    with open(logs_file, "w", encoding="utf-8") as f:
-        pass
+    resumed_arms: dict[tuple[str, str, int], dict[str, list[dict[str, Any]]]] = {}
+    if resume and logs_file.exists():
+        resumed_arms, retained_rows = _load_completed_iterations(logs_file, turns=turns)
+        with open(logs_file, "w", encoding="utf-8") as f:
+            for row in retained_rows:
+                f.write(json.dumps(row) + "\n")
+    else:
+        # Reset log file
+        with open(logs_file, "w", encoding="utf-8") as f:
+            pass
 
     console.print(
         "\n[bold cyan]════════════════════════════════════════════════════════════════════════════════[/bold cyan]"
@@ -412,7 +682,7 @@ def run_multirun_benchmark(
         "[bold white]  Candidate C15: Automated Multi-Run Benchmark Gate (N >= 30)  [/bold white]"
     )
     console.print(
-        f"[bold cyan]  Iterations (N): {iterations}  |  Turns: {turns}  |  Providers: {provider_key.upper()}[/bold cyan]"
+        f"[bold cyan]  Backend: {backend.upper()}  |  Iterations (N): {iterations}  |  Turns: {turns}  |  Providers: {provider_key.upper()}[/bold cyan]"
     )
     console.print(
         "[bold cyan]════════════════════════════════════════════════════════════════════════════════[/bold cyan]\n"
@@ -426,24 +696,67 @@ def run_multirun_benchmark(
         "anthropic"
     ].name = "Anthropic Claude Sonnet 4.6 ($3.00 in, $3.75 write, $0.30 read, $15.00 out)"
 
-    if provider_key == "all":
-        selected_providers = ["anthropic", "openai", "vllm"]
+    live_executor: HardenedLiveExecutor | None = None
+    if backend == "live":
+        prov = (
+            live_provider or (None if provider_key == "all" else provider_key) or "nvidia_nim"
+        ).lower()
+        key = api_key
+        if not key:
+            if prov in ("nvidia", "nvidia_nim"):
+                key = os.getenv("NVIDIA_NIM_API_KEY") or os.getenv("NVIDIA_API_KEY")
+                if not key:
+                    env_fcc = os.path.expanduser("~/.fcc/.env")
+                    if os.path.exists(env_fcc):
+                        with open(env_fcc, encoding="utf-8") as f:
+                            for line in f:
+                                if line.startswith("NVIDIA_NIM_API_KEY="):
+                                    key = line.strip().split("=", 1)[1].strip("\"'")
+                                    break
+            elif prov == "openrouter":
+                key = os.getenv("OPENROUTER_API_KEY")
+            elif prov == "anthropic":
+                key = os.getenv("ANTHROPIC_API_KEY")
+        if not key:
+            raise ValueError(f"Live multi-run execution requires an API key for provider '{prov}'.")
+        live_executor = HardenedLiveExecutor(api_key=key, provider=prov, model=model)
+        if prov == "openrouter" and not str(live_executor.model).endswith(":free"):
+            remaining_usd = check_openrouter_credits(key)
+            if remaining_usd <= 0.0:
+                raise InsufficientCreditsError(
+                    f"OpenRouter account has ${remaining_usd:.4f} remaining paid credits for model "
+                    f"'{live_executor.model}'. Top up credits or pass a ':free' model."
+                )
+        selected_providers = [prov]
+        console.print(
+            f"[bold magenta][LIVE API MODE] Executing {iterations} independent runs against "
+            f"{prov} ({live_executor.model})...[/bold magenta]\n"
+        )
     else:
-        selected_providers = [provider_key]
+        if provider_key == "all":
+            selected_providers = ["anthropic", "openai", "vllm"]
+        else:
+            selected_providers = [provider_key]
 
-    console.print(
-        "[bold yellow][SIMULATION MODE] Executing deterministic trace replay via HardenedKVCacheSimulator "
-        "(zero network calls; synthetic hardware timing).[/bold yellow]\n"
-    )
+        console.print(
+            "[bold yellow][SIMULATION MODE] Executing deterministic trace replay via HardenedKVCacheSimulator "
+            "(zero network calls; synthetic hardware timing).[/bold yellow]\n"
+        )
 
     raw_results_matrix: list[SingleIterationResult] = []
-
+    expected_arms = ("raw_baseline", "naive_provider", "cachealign_direct", "cachealign_litellm")
     t_start = time.perf_counter()
+    stop_reason: str | None = None
 
     for p_name in selected_providers:
-        pricing = PRICING_PROFILES[p_name]
+        pricing = PRICING_PROFILES.get(p_name, PRICING_PROFILES["openai"])
+        display_name = (
+            f"Live {p_name} ({live_executor.model})"
+            if backend == "live" and live_executor
+            else pricing.name
+        )
         console.print(
-            f"[bold magenta]▶ Evaluating Provider Model: {pricing.name}...[/bold magenta]"
+            f"[bold magenta]▶ Evaluating Provider Model: {display_name}...[/bold magenta]"
         )
 
         for wk in selected_workloads:
@@ -451,127 +764,83 @@ def run_multirun_benchmark(
             console.print(f"  • Running workload '{w_name}' over {iterations} iterations...")
 
             for i in range(1, iterations + 1):
-                iter_res = run_single_iteration(
-                    iteration_idx=i,
-                    provider_name=p_name,
-                    pricing=pricing,
-                    workload_key=wk,
-                    workload_defs=workload_defs,
-                    turns=turns,
-                    logs_file=logs_file,
-                )
+                resumed_key = (p_name, wk, i)
+                preloaded = resumed_arms.get(resumed_key)
+                if preloaded and all(a in preloaded for a in expected_arms):
+                    iter_res = _compute_iteration_arm_outputs(
+                        iteration_idx=i,
+                        provider_name=p_name,
+                        workload_key=wk,
+                        arm_turn_records=preloaded,
+                    )
+                else:
+                    try:
+                        iter_res = run_single_iteration(
+                            iteration_idx=i,
+                            provider_name=p_name,
+                            pricing=pricing,
+                            workload_key=wk,
+                            workload_defs=workload_defs,
+                            turns=turns,
+                            logs_file=logs_file,
+                            backend=backend,
+                            live_executor=live_executor,
+                            preloaded_arms=preloaded,
+                        )
+                    except Exception as exc:
+                        if _is_quota_or_payment_error(exc):
+                            stop_reason = f"{type(exc).__name__}: {exc}"
+                            console.print(
+                                f"\n[bold yellow]⚠ Stopping gracefully at iteration {i}/{iterations} "
+                                f"due to provider payment/quota limit: {stop_reason}[/bold yellow]"
+                            )
+                            break
+                        raise
+                    if backend == "live":
+                        print(f"    [live] completed iteration {i}/{iterations}", flush=True)
                 raw_results_matrix.extend(iter_res.values())
 
+                if (
+                    checkpoint_every > 0
+                    and i % checkpoint_every == 0
+                    and i < iterations
+                    and len(selected_workloads) == 1
+                ):
+                    _write_summary_artifact(
+                        raw_results_matrix=raw_results_matrix,
+                        selected_providers=selected_providers,
+                        selected_workloads=selected_workloads,
+                        backend=backend,
+                        live_executor=live_executor,
+                        requested_iterations=iterations,
+                        turns=turns,
+                        duration_sec=round(time.perf_counter() - t_start, 2),
+                        results_file=results_file,
+                        status="checkpoint",
+                        stop_reason=None,
+                        render_table=False,
+                    )
+            if stop_reason:
+                break
+        if stop_reason:
+            break
+
     total_duration_sec = round(time.perf_counter() - t_start, 2)
-
-    # Statistical Aggregation per (provider, workload, arm)
-    aggregated_summary: list[dict[str, Any]] = []
-
-    arms = [
-        ("Arm 1", "raw_baseline"),
-        ("Arm 2", "naive_provider"),
-        ("Arm 3a", "cachealign_direct"),
-        ("Arm 3b", "cachealign_litellm"),
-    ]
-
-    for p_name in selected_providers:
-        for wk in selected_workloads:
-            for arm_label, arm_id in arms:
-                slice_records = [
-                    r
-                    for r in raw_results_matrix
-                    if r.provider == p_name and r.workload == wk and r.arm_id == arm_id
-                ]
-
-                ctr_stats = compute_distribution_stats(
-                    [r.cached_token_ratio_pct for r in slice_records]
-                )
-                cost_stats = compute_distribution_stats([r.total_cost_usd for r in slice_records])
-                savings_raw_stats = compute_distribution_stats(
-                    [r.savings_vs_raw_pct for r in slice_records]
-                )
-                savings_naive_stats = compute_distribution_stats(
-                    [r.savings_vs_naive_pct for r in slice_records]
-                )
-                penalty_stats = compute_distribution_stats(
-                    [r.invalidation_penalty_pct for r in slice_records]
-                )
-                ttft_stats = compute_distribution_stats([r.p50_ttft_ms for r in slice_records])
-
-                row_data = {
-                    "provider": p_name,
-                    "provider_name": PRICING_PROFILES[p_name].name,
-                    "workload": wk,
-                    "arm_id": arm_id,
-                    "arm_label": arm_label,
-                    "n_iterations": len(slice_records),
-                    "cached_token_ratio": ctr_stats,
-                    "total_cost_usd": cost_stats,
-                    "savings_vs_raw_pct": savings_raw_stats,
-                    "savings_vs_naive_pct": savings_naive_stats,
-                    "invalidation_penalty_pct": penalty_stats,
-                    "p50_ttft_ms": ttft_stats,
-                }
-                aggregated_summary.append(row_data)
-
-    # Render Summary Table
-    table = Table(
-        title=f"CacheAlign Multi-Run Statistical Benchmark Matrix (N={iterations} Iterations, 95% Student's t CI)"
+    final_status = "partial_stopped" if stop_reason else "complete"
+    final_payload = _write_summary_artifact(
+        raw_results_matrix=raw_results_matrix,
+        selected_providers=selected_providers,
+        selected_workloads=selected_workloads,
+        backend=backend,
+        live_executor=live_executor,
+        requested_iterations=iterations,
+        turns=turns,
+        duration_sec=total_duration_sec,
+        results_file=results_file,
+        status=final_status,
+        stop_reason=stop_reason,
+        render_table=True,
     )
-    table.add_column("Provider", style="cyan")
-    table.add_column("Workload", style="yellow")
-    table.add_column("Arm", style="bold")
-    table.add_column("CTR (%) [Mean ± 95% CI]", justify="right", style="magenta")
-    table.add_column("Cost Savings vs Raw (%)", justify="right", style="green")
-    table.add_column("Invalidation Penalty", justify="right", style="red")
-    table.add_column("p50 TTFT (ms) [Mean ± CI]", justify="right")
-
-    for row in aggregated_summary:
-        ctr = row["cached_token_ratio"]
-        ctr_str = f"{ctr['mean']:.1f}% ± {(ctr['ci95_upper'] - ctr['mean']):.2f}%"
-
-        sav_raw = row["savings_vs_raw_pct"]
-        sav_str = (
-            f"{sav_raw['mean']:.1f}% ± {(sav_raw['ci95_upper'] - sav_raw['mean']):.2f}%"
-            if sav_raw["mean"] > 0
-            else "-"
-        )
-
-        pen = row["invalidation_penalty_pct"]
-        pen_str = f"+{pen['mean']:.1f}%" if pen["mean"] > 0 else "-"
-
-        ttft = row["p50_ttft_ms"]
-        ttft_str = f"{ttft['mean']:.1f} ± {(ttft['ci95_upper'] - ttft['mean']):.1f}ms"
-
-        table.add_row(
-            row["provider"],
-            row["workload"],
-            row["arm_label"],
-            ctr_str,
-            sav_str,
-            pen_str,
-            ttft_str,
-        )
-
-    console.print(table)
-
-    final_payload = {
-        "benchmark": "Candidate C15 Multi-Run Simulation Benchmark",
-        "execution_mode": "deterministic_simulation",
-        "is_live_api": False,
-        "simulator": "HardenedKVCacheSimulator",
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "iterations_n": iterations,
-        "turns_per_run": turns,
-        "duration_seconds": total_duration_sec,
-        "confidence_level": 0.95,
-        "providers_evaluated": selected_providers,
-        "workloads_evaluated": selected_workloads,
-        "summary": aggregated_summary,
-    }
-
-    with open(results_file, "w", encoding="utf-8") as f:
-        json.dump(final_payload, f, indent=2)
 
     console.print("\n[bold green]✓ Multi-Run Statistical Benchmark Complete.[/bold green]")
     console.print(f"  • Statistical Summary: [bold]{results_file}[/bold]")
@@ -654,6 +923,34 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output-dir", default="benchmarks/results", help="Directory for artifacts"
     )
+    parser.add_argument(
+        "--backend", choices=["simulation", "live"], default="simulation", help="Execution backend"
+    )
+    parser.add_argument(
+        "--live-provider",
+        choices=["anthropic", "openrouter", "nvidia", "nvidia_nim"],
+        default=None,
+        help="Live provider when --backend live is set",
+    )
+    parser.add_argument("--model", default=None, help="Explicit model name for live backend")
+    parser.add_argument("--api-key", default=None, help="Explicit API key for live backend")
+    parser.add_argument(
+        "--min-ctr",
+        type=float,
+        default=0.60,
+        help="Minimum cached token ratio threshold (e.g. 0.35 for 2-turn live runs)",
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from completed iterations/arms already recorded in the output JSONL log",
+    )
+    parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        default=5,
+        help="Flush an interim summary JSON checkpoint every k iterations (0 disables)",
+    )
 
     args = parser.parse_args()
     results = run_multirun_benchmark(
@@ -662,8 +959,18 @@ if __name__ == "__main__":
         provider_key=args.provider,
         turns=args.turns,
         output_dir=args.output_dir,
+        backend=args.backend,
+        live_provider=args.live_provider,
+        api_key=args.api_key,
+        model=args.model,
+        resume=args.resume,
+        checkpoint_every=args.checkpoint_every,
     )
 
+    out_prefix = "multirun_live" if args.backend == "live" else "multirun_benchmark"
     verify_multirun_truth_gate(
-        Path(args.output_dir) / "multirun_benchmark_summary.json", min_iterations=args.iterations
+        Path(args.output_dir) / f"{out_prefix}_summary.json",
+        min_iterations=args.iterations,
+        min_ctr=args.min_ctr,
+        require_live=(args.backend == "live"),
     )

@@ -237,6 +237,8 @@ class HardenedLiveExecutor:
             self.client = openai.OpenAI(
                 base_url="https://integrate.api.nvidia.com/v1",
                 api_key=api_key,
+                timeout=60.0,
+                max_retries=3,
             )
             self.model = model or "nvidia/nemotron-3-ultra-550b-a55b"
         elif self.provider == "openrouter":
@@ -245,6 +247,8 @@ class HardenedLiveExecutor:
             self.client = openai.OpenAI(
                 base_url="https://openrouter.ai/api/v1",
                 api_key=api_key,
+                timeout=60.0,
+                max_retries=3,
                 default_headers={
                     "HTTP-Referer": "https://invarcore.com",
                     "X-Title": "InvarCore CacheAlign Benchmark",
@@ -255,7 +259,7 @@ class HardenedLiveExecutor:
             try:
                 import anthropic
 
-                self.client = anthropic.Anthropic(api_key=api_key)
+                self.client = anthropic.Anthropic(api_key=api_key, timeout=60.0, max_retries=3)
                 self.model = model or "claude-sonnet-4-6"
             except ImportError as err:
                 raise ImportError(

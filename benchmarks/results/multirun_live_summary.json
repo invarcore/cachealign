@@ -1,0 +1,316 @@
+{
+  "benchmark": "Candidate C15 Multi-Run Live API Benchmark",
+  "execution_mode": "live_api",
+  "is_live_api": true,
+  "simulator": null,
+  "live_model": "nvidia/nemotron-3-ultra-550b-a55b",
+  "timestamp": "2026-11-26T15:28:43Z",
+  "iterations_n": 30,
+  "turns_per_run": 2,
+  "duration_seconds": 863.39,
+  "confidence_level": 0.95,
+  "providers_evaluated": [
+    "nvidia_nim"
+  ],
+  "workloads_evaluated": [
+    "data_agent"
+  ],
+  "summary": [
+    {
+      "provider": "nvidia_nim",
+      "provider_name": "Live nvidia_nim (nvidia/nemotron-3-ultra-550b-a55b)",
+      "workload": "data_agent",
+      "arm_id": "raw_baseline",
+      "arm_label": "Arm 1",
+      "n_iterations": 30,
+      "cached_token_ratio": {
+        "n": 30,
+        "mean": 0.0,
+        "std": 0.0,
+        "se": 0.0,
+        "ci95_lower": 0.0,
+        "ci95_upper": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0
+      },
+      "total_cost_usd": {
+        "n": 30,
+        "mean": 0.0,
+        "std": 0.0,
+        "se": 0.0,
+        "ci95_lower": 0.0,
+        "ci95_upper": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0
+      },
+      "savings_vs_raw_pct": {
+        "n": 30,
+        "mean": 0.0,
+        "std": 0.0,
+        "se": 0.0,
+        "ci95_lower": 0.0,
+        "ci95_upper": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0
+      },
+      "savings_vs_naive_pct": {
+        "n": 30,
+        "mean": 0.0,
+        "std": 0.0,
+        "se": 0.0,
+        "ci95_lower": 0.0,
+        "ci95_upper": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0
+      },
+      "invalidation_penalty_pct": {
+        "n": 30,
+        "mean": 0.0,
+        "std": 0.0,
+        "se": 0.0,
+        "ci95_lower": 0.0,
+        "ci95_upper": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0
+      },
+      "p50_ttft_ms": {
+        "n": 30,
+        "mean": 10807.59,
+        "std": 4451.1348,
+        "se": 812.6623,
+        "ci95_lower": 9145.6956,
+        "ci95_upper": 12469.4844,
+        "min": 5024.69,
+        "max": 27625.53,
+        "median": 10161.05
+      }
+    },
+    {
+      "provider": "nvidia_nim",
+      "provider_name": "Live nvidia_nim (nvidia/nemotron-3-ultra-550b-a55b)",
+      "workload": "data_agent",
+      "arm_id": "naive_provider",
+      "arm_label": "Arm 2",
+      "n_iterations": 30,
+      "cached_token_ratio": {
+        "n": 30,
+        "mean": 0.0,
+        "std": 0.0,
+        "se": 0.0,
+        "ci95_lower": 0.0,
+        "ci95_upper": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0
+      },
+      "total_cost_usd": {
+        "n": 30,
+        "mean": 0.0,
+        "std": 0.0,
+        "se": 0.0,
+        "ci95_lower": 0.0,
+        "ci95_upper": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0
+      },
+      "savings_vs_raw_pct": {
+        "n": 30,
+        "mean": 0.0,
+        "std": 0.0,
+        "se": 0.0,
+        "ci95_lower": 0.0,
+        "ci95_upper": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0
+      },
+      "savings_vs_naive_pct": {
+        "n": 30,
+        "mean": 0.0,
+        "std": 0.0,
+        "se": 0.0,
+        "ci95_lower": 0.0,
+        "ci95_upper": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0
+      },
+      "invalidation_penalty_pct": {
+        "n": 30,
+        "mean": 0.0,
+        "std": 0.0,
+        "se": 0.0,
+        "ci95_lower": 0.0,
+        "ci95_upper": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0
+      },
+      "p50_ttft_ms": {
+        "n": 30,
+        "mean": 13290.131,
+        "std": 5756.8061,
+        "se": 1051.0442,
+        "ci95_lower": 11140.7457,
+        "ci95_upper": 15439.5163,
+        "min": 6721.05,
+        "max": 32785.11,
+        "median": 11856.135
+      }
+    },
+    {
+      "provider": "nvidia_nim",
+      "provider_name": "Live nvidia_nim (nvidia/nemotron-3-ultra-550b-a55b)",
+      "workload": "data_agent",
+      "arm_id": "cachealign_direct",
+      "arm_label": "Arm 3a",
+      "n_iterations": 30,
+      "cached_token_ratio": {
+        "n": 30,
+        "mean": 37.5953,
+        "std": 0.0068,
+        "se": 0.0012,
+        "ci95_lower": 37.5928,
+        "ci95_upper": 37.5979,
+        "min": 37.59,
+        "max": 37.61,
+        "median": 37.59
+      },
+      "total_cost_usd": {
+        "n": 30,
+        "mean": 0.0,
+        "std": 0.0,
+        "se": 0.0,
+        "ci95_lower": 0.0,
+        "ci95_upper": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0
+      },
+      "savings_vs_raw_pct": {
+        "n": 30,
+        "mean": 0.0,
+        "std": 0.0,
+        "se": 0.0,
+        "ci95_lower": 0.0,
+        "ci95_upper": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0
+      },
+      "savings_vs_naive_pct": {
+        "n": 30,
+        "mean": 0.0,
+        "std": 0.0,
+        "se": 0.0,
+        "ci95_lower": 0.0,
+        "ci95_upper": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0
+      },
+      "invalidation_penalty_pct": {
+        "n": 30,
+        "mean": 0.0,
+        "std": 0.0,
+        "se": 0.0,
+        "ci95_lower": 0.0,
+        "ci95_upper": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0
+      },
+      "p50_ttft_ms": {
+        "n": 30,
+        "mean": 11945.56,
+        "std": 7183.9494,
+        "se": 1311.6037,
+        "ci95_lower": 9263.3304,
+        "ci95_upper": 14627.7896,
+        "min": 5714.46,
+        "max": 36611.45,
+        "median": 9933.355
+      }
+    },
+    {
+      "provider": "nvidia_nim",
+      "provider_name": "Live nvidia_nim (nvidia/nemotron-3-ultra-550b-a55b)",
+      "workload": "data_agent",
+      "arm_id": "cachealign_litellm",
+      "arm_label": "Arm 3b",
+      "n_iterations": 30,
+      "cached_token_ratio": {
+        "n": 30,
+        "mean": 37.582,
+        "std": 0.0081,
+        "se": 0.0015,
+        "ci95_lower": 37.579,
+        "ci95_upper": 37.585,
+        "min": 37.57,
+        "max": 37.59,
+        "median": 37.58
+      },
+      "total_cost_usd": {
+        "n": 30,
+        "mean": 0.0,
+        "std": 0.0,
+        "se": 0.0,
+        "ci95_lower": 0.0,
+        "ci95_upper": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0
+      },
+      "savings_vs_raw_pct": {
+        "n": 30,
+        "mean": 0.0,
+        "std": 0.0,
+        "se": 0.0,
+        "ci95_lower": 0.0,
+        "ci95_upper": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0
+      },
+      "savings_vs_naive_pct": {
+        "n": 30,
+        "mean": 0.0,
+        "std": 0.0,
+        "se": 0.0,
+        "ci95_lower": 0.0,
+        "ci95_upper": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0
+      },
+      "invalidation_penalty_pct": {
+        "n": 30,
+        "mean": 0.0,
+        "std": 0.0,
+        "se": 0.0,
+        "ci95_lower": 0.0,
+        "ci95_upper": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0
+      },
+      "p50_ttft_ms": {
+        "n": 30,
+        "mean": 13428.514,
+        "std": 11040.5901,
+        "se": 2015.7268,
+        "ci95_lower": 9306.3528,
+        "ci95_upper": 17550.6752,
+        "min": 4095.45,
+        "max": 59317.67,
+        "median": 10359.355
+      }
+    }
+  ]
+}

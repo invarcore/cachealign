@@ -114,6 +114,19 @@ Statistically evaluated across $N=30$ deterministic trace replay iterations per 
 
 *Run the simulation locally: `python benchmarks/run_multirun_benchmark.py --iterations 30 --workload all --provider all`*
 
+### Live Multi-Run Statistical Benchmark (NVIDIA NIM, N=30 Iterations)
+
+Statistically evaluated across $N=30$ **live API** iterations (`240` logged turns, `2` turns per run, `4,384 / 5,849` warm prefix tokens cached per Turn 2, salted per-iteration prefixes, `95%` Student's $t$ confidence bounds) against `nvidia/nemotron-3-ultra-550b-a55b` ([multirun_live_summary.json](benchmarks/results/multirun_live_summary.json)):
+
+| Arm | Cached Token Ratio (CTR) [Mean ± 95% CI] | Cached Tokens (Turn 2) | Live Hosted p50 TTFT [Mean ± 95% CI] |
+| :--- | :---: | :---: | :---: |
+| **Arm 1 (`raw_baseline`)** | `0.0% ± 0.00%` | `0 / 5,827` | `10,807.6 ± 1,661.9 ms` (`5,024.7–27,625.5 ms`) |
+| **Arm 2 (`naive_provider`)** | `0.0% ± 0.00%` | `0 / 5,827` | `13,290.1 ± 2,149.4 ms` (`6,721.1–32,785.1 ms`) |
+| **Arm 3a (`cachealign_direct`)** | **`37.6% ± 0.00%`** (`37.60%`) | **`4,384 / 5,849`** | `11,945.6 ± 2,682.2 ms` (`5,714.5–36,611.5 ms`) |
+| **Arm 3b (`cachealign_litellm`)** | **`37.6% ± 0.00%`** (`37.58%`) | **`4,384 / 5,849`** | `13,428.5 ± 4,122.2 ms` (`4,095.5–59,317.7 ms`) |
+
+*Live Scope & Credit Boundary:* Over 2 turns on NVIDIA NIM (`min_prefix ~ 4,000` tokens), Turn 1 populates the cache (`0%`) and Turn 2 achieves ~75% warm prefix reuse (`37.6%` overall CTR across 2 turns; `rotating_rag` and `coding_loop` workloads remain below NIM's ~4K caching threshold). Multi-provider paid `N=30` runs across OpenRouter/Anthropic/OpenAI/Gemini remain pending paid API credits (initial OpenRouter probe hit `HTTP 402 Payment Required` at `$0.00` account balance). Resume-safe execution with periodic summary checkpoints (`--resume --checkpoint-every 5`) is supported in `benchmarks/run_multirun_benchmark.py`.
+
 ---
 
 ## 🚀 Quickstart (Python SDK)
