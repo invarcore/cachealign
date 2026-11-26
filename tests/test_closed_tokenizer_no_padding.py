@@ -220,4 +220,3 @@ def test_observatory_mock_execution(tmp_path: Path, monkeypatch):
     )
     assert len(obs) == 1
     assert test_jsonl.exists()
-

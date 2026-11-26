@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Code Style: Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Tests: Passing](https://img.shields.io/badge/tests-101%20passed-brightgreen.svg)](https://github.com/invarcore/cachealign)
+[![Status](https://img.shields.io/badge/Status-Pre--release%20%2F%20Source%20Install-orange.svg)](https://github.com/invarcore/cachealign)
 [![Live CI Evaluation](https://github.com/invarcore/cachealign/actions/workflows/live-eval.yml/badge.svg)](https://github.com/invarcore/cachealign/actions/workflows/live-eval.yml)
 
 **Stop busting your prompt cache.** A 1-line drop-in SDK wrapper and self-hosted Rust sidecar proxy that automatically aligns AI agent prompt prefixes to achieve 85%+ cache hit rates across Anthropic, OpenAI, and Google Gemini.
@@ -41,7 +41,7 @@ In real-world multi-turn agent loops (LangGraph, CrewAI, AutoGen, custom ReAct),
 ## 💡 The Solution: CacheAlign
 
 CacheAlign is a zero-latency optimization layer available in two form factors:
-1. **In-Process Python SDK (`pip install cachealign`)**: 1-line wrapper over Anthropic, OpenAI, or Gemini clients with in-memory execution and zero network hops.
+1. **In-Process Python SDK (Pre-release / Git Install)**: 1-line wrapper over Anthropic, OpenAI, or Gemini clients with in-memory execution and zero network hops.
 2. **Self-Hosted Sidecar Proxy (`cachealign-proxy`)**: Compiled Rust binary for Kubernetes and polyglot microservice environments.
 
 ### Core Features
@@ -93,10 +93,18 @@ Empirical validation executed live on NVIDIA NIM GPU inference clusters within G
 ## 🚀 Quickstart (Python SDK)
 
 ### 1. Installation
+
+> **Note:** PyPI publication is pre-release / source install only. Install directly from Git:
+
 ```bash
-pip install cachealign
-# Or with specific providers:
-pip install "cachealign[anthropic,openai,gemini]"
+# Source install via pip
+pip install "git+https://github.com/invarcore/cachealign.git"
+
+# Or with uv
+uv add "git+https://github.com/invarcore/cachealign.git"
+
+# Or with optional provider extras
+pip install "cachealign[anthropic,openai,gemini] @ git+https://github.com/invarcore/cachealign.git"
 ```
 
 ### 2. Anthropic Claude (1-Line Wrap)

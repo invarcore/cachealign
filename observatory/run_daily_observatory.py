@@ -136,7 +136,9 @@ def run_provider_smoke_probes(
             with open(out_path, "a", encoding="utf-8") as f:
                 for obs in obs_list:
                     f.write(
-                        json.dumps(asdict(obs), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+                        json.dumps(
+                            asdict(obs), sort_keys=True, separators=(",", ":"), ensure_ascii=False
+                        )
                         + "\n"
                     )
             logger.info("[+] Successfully anchored %d observations for '%s'.", len(obs_list), p_id)
