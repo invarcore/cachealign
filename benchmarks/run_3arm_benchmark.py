@@ -68,7 +68,7 @@ class PricingProfile:
 
 PRICING_PROFILES: dict[str, PricingProfile] = {
     "anthropic": PricingProfile(
-        name="Anthropic Claude 3.5 Sonnet",
+        name="Anthropic Claude Context Caching (Claude 3.5 Haiku / Claude 3.7 Sonnet Ratios)",
         price_base_input=PRICE_BASE_INPUT,
         price_cache_write=PRICE_CACHE_WRITE,
         price_cache_read=PRICE_CACHE_READ,
