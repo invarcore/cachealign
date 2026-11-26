@@ -25,9 +25,9 @@ DEFAULT_VOLATILE_PATTERNS = [
         r"^\s*\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\s*$",
         re.MULTILINE,
     ),
-    # Session, Request, or Trace IDs
+    # Session, Request, Trace, or Agent/Subagent IDs
     re.compile(
-        r"^\s*(?:session|request|conversation|trace)[_-]id\s*[:=]\s*([a-zA-Z0-9_\-\.]+)\s*$",
+        r"^\s*(?:session|request|conversation|trace|agent|subagent)[_-]id\s*[:=]\s*([a-zA-Z0-9_\-\.]+)\s*$",
         re.IGNORECASE | re.MULTILINE,
     ),
     # Turn or step counters

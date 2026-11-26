@@ -1,0 +1,98 @@
+{
+  "timestamp": "2026-11-26T06:30:10Z",
+  "subagents_evaluated": 5,
+  "unaligned": {
+    "unique_blocks": 73,
+    "vram_kb": 18688.0,
+    "results": [
+      {
+        "agent": "Orchestrator",
+        "total_blocks": 20,
+        "new_blocks": 20,
+        "shared_blocks": 0,
+        "sharing_ratio": 0.0,
+        "ttft_ms": 381.84675029089766
+      },
+      {
+        "agent": "Researcher",
+        "total_blocks": 20,
+        "new_blocks": 20,
+        "shared_blocks": 0,
+        "sharing_ratio": 0.0,
+        "ttft_ms": 378.7788723739071
+      },
+      {
+        "agent": "Coder",
+        "total_blocks": 20,
+        "new_blocks": 20,
+        "shared_blocks": 0,
+        "sharing_ratio": 0.0,
+        "ttft_ms": 377.2272242838455
+      },
+      {
+        "agent": "Reviewer",
+        "total_blocks": 20,
+        "new_blocks": 20,
+        "shared_blocks": 0,
+        "sharing_ratio": 0.0,
+        "ttft_ms": 355.42237663459986
+      },
+      {
+        "agent": "Verifier",
+        "total_blocks": 20,
+        "new_blocks": 20,
+        "shared_blocks": 0,
+        "sharing_ratio": 0.0,
+        "ttft_ms": 386.30015475153675
+      }
+    ]
+  },
+  "cachealign": {
+    "unique_blocks": 32,
+    "vram_kb": 8192.0,
+    "vram_reduction_pct": 56.16438356164384,
+    "subagents_ttft_speedup": 3.858108994457223,
+    "results": [
+      {
+        "agent": "Orchestrator",
+        "total_blocks": 20,
+        "new_blocks": 20,
+        "shared_blocks": 0,
+        "sharing_ratio": 0.0,
+        "ttft_ms": 386.50891357274685
+      },
+      {
+        "agent": "Researcher",
+        "total_blocks": 20,
+        "new_blocks": 3,
+        "shared_blocks": 17,
+        "sharing_ratio": 85.0,
+        "ttft_ms": 100.7330995856037
+      },
+      {
+        "agent": "Coder",
+        "total_blocks": 20,
+        "new_blocks": 3,
+        "shared_blocks": 17,
+        "sharing_ratio": 85.0,
+        "ttft_ms": 99.01435415929393
+      },
+      {
+        "agent": "Reviewer",
+        "total_blocks": 20,
+        "new_blocks": 3,
+        "shared_blocks": 17,
+        "sharing_ratio": 85.0,
+        "ttft_ms": 93.71939078900203
+      },
+      {
+        "agent": "Verifier",
+        "total_blocks": 20,
+        "new_blocks": 3,
+        "shared_blocks": 17,
+        "sharing_ratio": 85.0,
+        "ttft_ms": 94.73593309514368
+      }
+    ]
+  }
+}
